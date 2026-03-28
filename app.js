@@ -713,9 +713,12 @@ const renderRequestCard = (req) => {
         >${escHtml(replyTpl)}</textarea>
         <p class="form-status reply-status" style="display:none"></p>
         <div class="btn-row">
-          <button class="btn btn-primary btn-sm reply-send-btn" data-action="confirm" data-id="${escHtml(req.id)}" ${dis}>✅ Bestätigen</button>
-          <button class="btn btn-danger btn-sm reply-send-btn" data-action="cancel" data-id="${escHtml(req.id)}" ${dis}>❌ Ablehnen</button>
-          <button class="btn btn-outline btn-sm reply-send-btn" data-action="reply" data-id="${escHtml(req.id)}" ${dis}>📨 Antworten</button>
+          <button class="btn btn-primary btn-sm req-tpl-btn" data-action="confirm" data-id="${escHtml(req.id)}">✅ Bestätigen</button>
+          <button class="btn btn-danger btn-sm req-tpl-btn" data-action="cancel" data-id="${escHtml(req.id)}">❌ Ablehnen</button>
+          <button class="btn btn-outline btn-sm reply-send-btn" data-id="${escHtml(req.id)}" ${dis} style="margin-left:auto">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Senden
+          </button>
         </div>
       </div>
     </div>
@@ -767,12 +770,26 @@ const bindRequestEvents = () => {
     });
   });
 
-  // Antwort / Bestätigen / Ablehnen
+  // Bestätigen / Ablehnen → nur Vorlage laden
+  document.querySelectorAll('.req-tpl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.action;
+      const replyEl = btn.closest('.req-reply');
+      const textarea = replyEl.querySelector('.reply-text');
+      textarea.value = action === 'confirm' ? textarea.dataset.confirmTpl : textarea.dataset.cancelTpl;
+      replyEl.dataset.pendingAction = action;
+      replyEl.querySelectorAll('.req-tpl-btn').forEach(b => b.classList.remove('is-selected'));
+      btn.classList.add('is-selected');
+      textarea.focus();
+    });
+  });
+
+  // Senden → E-Mail abschicken
   document.querySelectorAll('.reply-send-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
-      const action = btn.dataset.action;
       const replyEl = btn.closest('.req-reply');
+      const action = replyEl.dataset.pendingAction || 'reply';
       const textarea = replyEl.querySelector('.reply-text');
       const statusEl = replyEl.querySelector('.reply-status');
       const message = textarea?.value?.trim();
@@ -782,19 +799,7 @@ const bindRequestEvents = () => {
       const req = state.requests.find(r => r.id === id);
       if (!req) return;
 
-      // Beim ersten Klick auf Bestätigen/Ablehnen erst Vorlage laden
-      if (action === 'confirm' && textarea.value.trim() === textarea.dataset.replyTpl) {
-        textarea.value = textarea.dataset.confirmTpl;
-        showToast('Bestätigungstext eingesetzt – bitte prüfen und erneut senden', 'info');
-        return;
-      }
-      if (action === 'cancel' && textarea.value.trim() === textarea.dataset.replyTpl) {
-        textarea.value = textarea.dataset.cancelTpl;
-        showToast('Absagetext eingesetzt – bitte prüfen und erneut senden', 'info');
-        return;
-      }
-
-      replyEl.querySelectorAll('.reply-send-btn').forEach(b => b.disabled = true);
+      btn.disabled = true;
       statusEl.style.display = 'none';
 
       try {
@@ -807,7 +812,7 @@ const bindRequestEvents = () => {
         if (action === 'cancel')  { req.status = 'cancelled'; updateRequestsBadge(); }
 
         const toastMsg = action === 'confirm' ? 'Buchung bestätigt & E-Mail gesendet'
-          : action === 'cancel' ? 'Absage gesendet' : 'Antwort gesendet';
+          : action === 'cancel' ? 'Absage gesendet' : 'Nachricht gesendet';
         showToast(toastMsg, 'success');
         renderRequestsTab();
       } catch (err) {
@@ -815,7 +820,7 @@ const bindRequestEvents = () => {
         statusEl.style.display = 'block';
         statusEl.className = 'form-status error reply-status';
         statusEl.textContent = err.message;
-        replyEl.querySelectorAll('.reply-send-btn').forEach(b => b.disabled = false);
+        btn.disabled = false;
       }
     });
   });
@@ -826,8 +831,6 @@ const bindRequestEvents = () => {
 const openSettingsModal = () => {
   const s = state.settings || {};
   document.getElementById('set-sender-name').value = s.senderName || '';
-  document.getElementById('set-recipient-email').value = s.bookingRecipientEmail || '';
-  document.getElementById('set-phone').value = s.bookingPhone || '';
   document.getElementById('settings-status').style.display = 'none';
   document.getElementById('pw-status').style.display = 'none';
   document.getElementById('pw-form').reset();
@@ -862,8 +865,6 @@ const bindSettingsEvents = () => {
         method: 'PATCH',
         body: JSON.stringify({
           senderName: document.getElementById('set-sender-name').value.trim(),
-          bookingRecipientEmail: document.getElementById('set-recipient-email').value.trim(),
-          bookingPhone: document.getElementById('set-phone').value.trim(),
         }),
       });
       state.settings = data.settings;
