@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>Hiasen Hof – Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="./assets/HiasenHofLogo.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ LOGIN ══ -->
+<div id="login-view">
+  <div class="login-card">
+    <div class="login-brand">
+      <img src="./assets/HiasenHofLogo.png" alt="Hiasen Hof Logo" />
+      <h1>Hiasen Hof</h1>
+      <p>Campingplatz Manager</p>
+    </div>
+    <form id="login-form" autocomplete="on">
+      <div class="form-group">
+        <label for="login-email">E-Mail</label>
+        <input class="input" type="text" id="login-email" name="email" autocomplete="username" placeholder="admin" required />
+      </div>
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="login-password">Passwort</label>
+        <input class="input" type="password" id="login-password" name="password" autocomplete="current-password" required />
+      </div>
+      <button class="btn btn-primary btn-full" type="submit" style="margin-top:1.1rem">Anmelden</button>
+      <p id="login-error" class="login-error" aria-live="polite"></p>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ APP ═══ -->
+<div id="app-view" class="hidden app-shell">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-header-brand">
+      <img src="./assets/HiasenHofLogo.png" alt="Hiasen Hof Logo" />
+      <div class="app-header-brand-copy">
+        <strong>Hiasen Hof</strong>
+        <span>Campingplatz Manager</span>
+      </div>
+    </div>
+    <button class="btn-icon" id="logout-btn" title="Abmelden" aria-label="Abmelden">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Tab-Inhalt -->
+  <main class="tab-content" id="tab-content">
+
+    <!-- ── Tab: Camping ── -->
+    <div id="tab-camping" class="tab-panel" role="tabpanel"></div>
+
+    <!-- ── Tab: Stellplätze ── -->
+    <div id="tab-pitches" class="tab-panel hidden" role="tabpanel"></div>
+
+    <!-- ── Tab: Anfragen ── -->
+    <div id="tab-requests" class="tab-panel hidden" role="tabpanel"></div>
+
+  </main>
+
+  <!-- Bottom-Nav -->
+  <nav class="bottom-nav" role="tablist" aria-label="Hauptnavigation">
+    <button class="nav-btn is-active" data-tab="camping" role="tab" aria-selected="true">
+      <span class="nav-icon">⛺</span>
+      <span>Camping</span>
+    </button>
+    <button class="nav-btn" data-tab="pitches" role="tab" aria-selected="false">
+      <span class="nav-icon">📍</span>
+      <span>Stellplätze</span>
+    </button>
+    <button class="nav-btn" data-tab="requests" role="tab" aria-selected="false">
+      <span class="nav-icon">📋</span>
+      <span>Anfragen</span>
+    </button>
+  </nav>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════ MODAL: GAST ══ -->
+<div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal" id="modal-panel">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title" id="modal-title">Gast anlegen</h2>
+      <button class="btn-icon" id="modal-close" aria-label="Schließen">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <form id="modal-guest-form" autocomplete="off">
+      <input type="hidden" id="modal-booking-id" name="bookingId" value="" />
+
+      <div class="form-group">
+        <label for="mg-name">Name *</label>
+        <input class="input" type="text" id="mg-name" name="name" required placeholder="Familie Mustermann" />
+      </div>
+
+      <div class="form-row" style="margin-top:0.75rem">
+        <div class="form-group">
+          <label for="mg-zone">Zone *</label>
+          <select class="select" id="mg-zone" name="stellplatz" required>
+            <option value="">Wählen…</option>
+            <option value="Wiese 1">Wiese 1</option>
+            <option value="Wiese 2">Wiese 2</option>
+            <option value="Wiese 3">Wiese 3</option>
+            <option value="Seeplatz">Seeplatz</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="mg-number">Platz-Nr. *</label>
+          <input class="input" type="number" id="mg-number" name="stellplatznummer" min="1" max="26" required placeholder="12" />
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:0.75rem">
+        <div class="form-group">
+          <label for="mg-arrival">Anreise *</label>
+          <input class="input" type="date" id="mg-arrival" name="arrival" required />
+        </div>
+        <div class="form-group">
+          <label for="mg-departure">Abreise *</label>
+          <input class="input" type="date" id="mg-departure" name="departure" required />
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:0.75rem">
+        <div class="form-group">
+          <label for="mg-email">E-Mail</label>
+          <input class="input" type="email" id="mg-email" name="email" placeholder="gast@mail.at" />
+        </div>
+        <div class="form-group">
+          <label for="mg-phone">Telefon</label>
+          <input class="input" type="tel" id="mg-phone" name="phone" placeholder="+43 …" />
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:0.75rem">
+        <div class="form-group">
+          <label for="mg-adults">Erwachsene</label>
+          <input class="input" type="number" id="mg-adults" name="adults" min="0" value="1" />
+        </div>
+        <div class="form-group">
+          <label for="mg-children">Kinder</label>
+          <input class="input" type="number" id="mg-children" name="children" min="0" value="0" />
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="mg-pitch-types">Fahrzeug / Platzwahl</label>
+        <input class="input" type="text" id="mg-pitch-types" name="pitchTypes" placeholder="z.B. Wohnmobil, Hund" />
+      </div>
+
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="mg-notes">Bemerkungen</label>
+        <textarea class="textarea" id="mg-notes" name="notes" rows="2" placeholder="Interne Notizen…"></textarea>
+      </div>
+
+      <div class="toggle-row" style="margin-top:0.9rem">
+        <span>Bereits bezahlt</span>
+        <button type="button" class="toggle" id="mg-paid-toggle" aria-pressed="false"></button>
+        <input type="hidden" id="mg-paid-input" name="paid" value="false" />
+      </div>
+
+      <p id="modal-status" class="form-status" style="display:none; margin-top:0.5rem"></p>
+
+      <div class="btn-row" style="margin-top:1rem">
+        <button type="button" class="btn btn-outline" id="modal-cancel">Abbrechen</button>
+        <button type="submit" class="btn btn-primary" style="flex:1" id="modal-submit">Einchecken</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ TOAST-CONTAINER ══ -->
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+<!-- ═══════════════════════════════════════════ LOADING-OVERLAY ══ -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="spinner"></div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>
