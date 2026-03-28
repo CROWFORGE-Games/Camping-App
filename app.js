@@ -323,6 +323,9 @@ const renderGuestCard = (guest) => `
         <button class="btn btn-ghost btn-sm meldezettel-btn" data-id="${escHtml(guest.id)}">
           🖨 Meldezettel
         </button>
+        <button class="btn btn-danger btn-sm guest-delete-btn" data-id="${escHtml(guest.id)}" style="margin-left:auto">
+          Löschen
+        </button>
       </div>
     </div>
   </div>
@@ -460,6 +463,25 @@ const bindCampingEvents = () => {
         await api(`/api/app/guests/${id}`, { method: 'DELETE' });
         state.guests = state.guests.filter(g => g.id !== id);
         showToast('Gast ausgecheckt', 'success');
+        renderCampingTab();
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // Gast löschen (z.B. bei Absage)
+  document.querySelectorAll('.guest-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Gast wirklich löschen?')) return;
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        await api(`/api/app/guests/${id}`, { method: 'DELETE' });
+        state.guests = state.guests.filter(g => g.id !== id);
+        showToast('Gast gelöscht', 'success');
         renderCampingTab();
       } catch (err) {
         showToast(err.message, 'error');
