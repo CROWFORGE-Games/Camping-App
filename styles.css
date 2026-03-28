@@ -276,21 +276,19 @@ a.btn-icon { text-decoration: none; }
 
 /* ─── Schnellsuche ───────────────────────────────────────────────────────── */
 .search-wrap {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.5rem;
 }
 
 .search-wrap::before {
   content: '🔍';
-  position: absolute;
-  left: 0.7rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.85rem;
-  pointer-events: none;
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 
-.search-input { padding-left: 2.1rem; }
+.search-input { flex: 1; }
 
 /* ─── Preisrechner-Hinweis ───────────────────────────────────────────────── */
 .price-calc-hint {
