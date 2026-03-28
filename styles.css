@@ -683,6 +683,85 @@ a.btn-icon { text-decoration: none; }
   color: #fff;
 }
 
+/* ─── Anfragen-Karten ────────────────────────────────────────────────────── */
+.req-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.req-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem 0.6rem;
+}
+
+.req-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.req-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.req-sub {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.req-dates {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.req-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.req-message {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  font-style: italic;
+  background: var(--bg);
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--line-strong);
+}
+
+.req-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem 0.75rem;
+}
+
+.req-reply {
+  border-top: 1px solid var(--line);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  background: var(--bg);
+}
+
 /* ─── Reply-Form (Anfragen) ──────────────────────────────────────────────── */
 .reply-form { display: flex; flex-direction: column; gap: 0.75rem; }
 

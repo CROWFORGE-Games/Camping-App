@@ -652,19 +652,44 @@ app.post('/api/app/requests/:id/reply', requireAuth, async (req, res) => {
 
     const subject = action === 'confirm'
       ? 'Buchungsbestätigung – Hiasen Hof am Thiersee'
-      : 'Antwort auf Ihre Buchungsanfrage – Hiasen Hof am Thiersee';
+      : action === 'cancel'
+        ? 'Absage Ihrer Buchungsanfrage – Hiasen Hof am Thiersee'
+        : 'Antwort auf Ihre Buchungsanfrage – Hiasen Hof am Thiersee';
 
     await sendResendEmail({ to: requestData.email, subject, text: buildEmailBody(requestData, message) });
 
-    if (action === 'confirm' && GAS_ENABLED && GAS_URL) {
-      await gasPost('updateInquiryStatus', { sheetName: GAS_ANFRAGEN_SHEET, id, status: 'confirmed' });
-      invalidateGasCache('inquiries');
+    if (action === 'confirm' || action === 'cancel') {
+      const newStatus = action === 'confirm' ? 'confirmed' : 'cancelled';
+      if (GAS_ENABLED && GAS_URL) {
+        await gasPost('updateInquiryStatus', { sheetName: GAS_ANFRAGEN_SHEET, id, status: newStatus });
+        invalidateGasCache('inquiries');
+      }
+      const store = loadStore();
+      const idx = (store.requests || []).findIndex(r => r.id === id);
+      if (idx >= 0) { store.requests[idx].status = newStatus; saveStore(store); }
     }
 
     res.json({ ok: true });
   } catch (err) {
     console.error('Antwort-Fehler:', err);
     res.status(500).json({ error: err.message || 'E-Mail konnte nicht gesendet werden.' });
+  }
+});
+
+// Anfrage löschen
+app.delete('/api/app/requests/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (GAS_ENABLED && GAS_URL) {
+      await gasPost('deleteInquiry', { sheetName: GAS_ANFRAGEN_SHEET, id }).catch(() => {});
+      invalidateGasCache('inquiries');
+    }
+    const store = loadStore();
+    store.requests = (store.requests || []).filter(r => r.id !== id);
+    saveStore(store);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Fehler beim Löschen.' });
   }
 });
 

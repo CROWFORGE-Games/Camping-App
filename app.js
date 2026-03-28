@@ -656,7 +656,7 @@ const renderRequestsTab = () => {
 
     <div class="filter-tabs">
       ${filters.map(f => `
-        <button class="filter-tab ${state.requestFilter === f.key ? 'is-active' : ''}" data-filter="${f.key}">
+        <button class="filter-tab ${state.requestFilter === f.key ? 'is-active' : ''}" data-filter="${escHtml(f.key)}">
           ${escHtml(f.label)} (${counts[f.key]})
         </button>
       `).join('')}
@@ -664,7 +664,7 @@ const renderRequestsTab = () => {
 
     ${filtered.length === 0
       ? `<div class="empty-state"><div class="empty-state-icon">📋</div><p>Keine Anfragen.</p></div>`
-      : `<div id="requests-list">${filtered.map(r => renderRequestCard(r)).join('')}</div>`
+      : `<div id="requests-list" style="display:flex;flex-direction:column;gap:0.5rem">${filtered.map(r => renderRequestCard(r)).join('')}</div>`
     }
   `;
 
@@ -673,48 +673,49 @@ const renderRequestsTab = () => {
 
 const renderRequestCard = (req) => {
   const statusLabels = { new: 'Neu', confirmed: 'Bestätigt', cancelled: 'Abgelehnt', done: 'Erledigt' };
-  const statusBadge = { new: 'new', confirmed: 'confirmed', cancelled: 'cancelled', done: 'paid' };
+  const statusBadge  = { new: 'new', confirmed: 'confirmed', cancelled: 'cancelled', done: 'paid' };
 
   const confirmTpl = `wir freuen uns, Ihre Buchungsanfrage bestätigen zu können.\n\nWir erwarten Sie am ${fmtDate(req.arrival)}${req.preferredPitch ? ` auf ${req.preferredPitch}` : ''}.\n\nBei Fragen stehen wir Ihnen gerne zur Verfügung.\n\nMit freundlichen Grüßen\nIhr Team vom Hiasen Hof am Thiersee`;
-  const replyTpl = `vielen Dank für Ihre Anfrage.\n\n\n\nMit freundlichen Grüßen\nIhr Team vom Hiasen Hof am Thiersee`;
+  const cancelTpl  = `vielen Dank für Ihre Anfrage.\n\nLeider müssen wir Ihnen mitteilen, dass wir Ihre Buchung für den gewünschten Zeitraum leider nicht ermöglichen können.\n\nWir hoffen, Sie zu einem anderen Zeitpunkt bei uns begrüßen zu dürfen.\n\nMit freundlichen Grüßen\nIhr Team vom Hiasen Hof am Thiersee`;
+  const replyTpl   = `vielen Dank für Ihre Anfrage.\n\n\n\nMit freundlichen Grüßen\nIhr Team vom Hiasen Hof am Thiersee`;
+
+  const pax = [req.adults ? `${req.adults} Erw.` : '', req.children ? `${req.children} Kinder` : ''].filter(Boolean).join(', ');
+  const dis = !state.resendConfigured ? 'disabled title="Resend nicht konfiguriert"' : '';
 
   return `
-    <div class="card" data-id="${escHtml(req.id)}">
-      <button class="card-trigger" data-toggle="${escHtml(req.id)}">
-        <div class="card-trigger-main">
-          <span class="card-name">${escHtml(req.name)}</span>
-          <span class="card-sub">${fmtDate(req.arrival)} – ${fmtDate(req.departure)} · ${escHtml(req.preferredPitch || 'Kein Wunschplatz')}</span>
+    <div class="req-card" data-id="${escHtml(req.id)}">
+      <div class="req-card-top">
+        <div class="req-card-info">
+          <span class="req-name">${escHtml(req.name)}</span>
+          <span class="req-sub">${escHtml(req.preferredPitch || 'Kein Wunschplatz')}</span>
+          <span class="req-dates">${fmtDate(req.arrival)} – ${fmtDate(req.departure)}${pax ? ` · ${escHtml(pax)}` : ''}</span>
+          <div class="req-meta">
+            ${req.email ? `<span>${escHtml(req.email)}</span>` : ''}
+            ${req.phone ? `<span>${escHtml(req.phone)}</span>` : ''}
+            ${req.pitchTypes?.length ? `<span>${escHtml(req.pitchTypes.join(', '))}</span>` : ''}
+            ${req.estimatedTotal ? `<span>${escHtml(req.estimatedTotal)}</span>` : ''}
+          </div>
+          ${req.message ? `<p class="req-message">${escHtml(req.message)}</p>` : ''}
         </div>
-        <div class="card-trigger-end">
-          ${badgeHtml(statusLabels[req.status] || req.status, statusBadge[req.status] || 'new')}
-          <span class="card-chevron">▼</span>
-        </div>
-      </button>
-      <div class="card-body">
-        ${detailRow('📧', req.email)}
-        ${detailRow('📞', req.phone)}
-        ${detailRow('🚐', req.pitchTypes?.join(', '), 'Fahrzeug')}
-        ${detailRow('👥', [req.adults ? `${req.adults} Erw.` : '', req.children ? `${req.children} Kinder` : ''].filter(Boolean).join(', '))}
-        ${req.estimatedTotal ? detailRow('💰', req.estimatedTotal, 'Geschätzter Preis') : ''}
-        ${req.message ? detailRow('💬', req.message, 'Nachricht') : ''}
-        <div class="detail-divider"></div>
+        <span class="badge badge-${escHtml(statusBadge[req.status] || 'new')}">${escHtml(statusLabels[req.status] || req.status)}</span>
+      </div>
 
-        <!-- Antwort-Formular -->
-        <div class="reply-form" data-request-id="${escHtml(req.id)}">
-          <div class="form-group">
-            <label>Antwort</label>
-            <textarea class="textarea reply-text" rows="5" data-confirm-tpl="${escHtml(confirmTpl)}" data-reply-tpl="${escHtml(replyTpl)}">${escHtml(replyTpl)}</textarea>
-          </div>
-          <p class="reply-actions-label">Aktion wählen:</p>
-          <div class="btn-row">
-            <button class="btn btn-primary reply-send-btn" data-action="confirm" data-id="${escHtml(req.id)}" ${!state.resendConfigured ? 'disabled title="Resend nicht konfiguriert"' : ''}>
-              ✅ Bestätigen &amp; senden
-            </button>
-            <button class="btn btn-outline reply-send-btn" data-action="reply" data-id="${escHtml(req.id)}" ${!state.resendConfigured ? 'disabled title="Resend nicht konfiguriert"' : ''}>
-              📨 Antworten
-            </button>
-          </div>
-          <p class="form-status reply-status" style="display:none" data-id="${escHtml(req.id)}"></p>
+      <div class="req-actions">
+        <button class="btn btn-danger btn-sm req-delete-btn" data-id="${escHtml(req.id)}">Löschen</button>
+        <button class="btn btn-outline btn-sm req-reply-toggle" data-id="${escHtml(req.id)}">Antworten</button>
+      </div>
+
+      <div class="req-reply hidden" data-id="${escHtml(req.id)}">
+        <textarea class="textarea reply-text" rows="5"
+          data-confirm-tpl="${escHtml(confirmTpl)}"
+          data-cancel-tpl="${escHtml(cancelTpl)}"
+          data-reply-tpl="${escHtml(replyTpl)}"
+        >${escHtml(replyTpl)}</textarea>
+        <p class="form-status reply-status" style="display:none"></p>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm reply-send-btn" data-action="confirm" data-id="${escHtml(req.id)}" ${dis}>✅ Bestätigen</button>
+          <button class="btn btn-danger btn-sm reply-send-btn" data-action="cancel" data-id="${escHtml(req.id)}" ${dis}>❌ Ablehnen</button>
+          <button class="btn btn-outline btn-sm reply-send-btn" data-action="reply" data-id="${escHtml(req.id)}" ${dis}>📨 Antworten</button>
         </div>
       </div>
     </div>
@@ -722,20 +723,6 @@ const renderRequestCard = (req) => {
 };
 
 const bindRequestEvents = () => {
-  // Karten auf/zuklappen + Vorlagen einsetzen
-  document.querySelectorAll('[data-toggle]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const card = btn.closest('.card');
-      const wasOpen = card.classList.contains('is-open');
-      card.classList.toggle('is-open');
-      // Beim Öffnen Standardvorlage setzen
-      if (!wasOpen) {
-        const textarea = card.querySelector('.reply-text');
-        if (textarea) textarea.value = textarea.dataset.replyTpl;
-      }
-    });
-  });
-
   // Filter-Tabs
   document.querySelectorAll('.filter-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -744,15 +731,50 @@ const bindRequestEvents = () => {
     });
   });
 
-  // Antwort senden
+  // Antwort-Bereich togglen
+  document.querySelectorAll('.req-reply-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const replyEl = document.querySelector(`.req-reply[data-id="${id}"]`);
+      const isOpen = !replyEl.classList.contains('hidden');
+      document.querySelectorAll('.req-reply').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.req-reply-toggle').forEach(b => b.textContent = 'Antworten');
+      if (!isOpen) {
+        replyEl.classList.remove('hidden');
+        btn.textContent = 'Schließen';
+        const textarea = replyEl.querySelector('.reply-text');
+        if (textarea) textarea.value = textarea.dataset.replyTpl;
+      }
+    });
+  });
+
+  // Löschen
+  document.querySelectorAll('.req-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Anfrage wirklich löschen?')) return;
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        await api(`/api/app/requests/${id}`, { method: 'DELETE' });
+        state.requests = state.requests.filter(r => r.id !== id);
+        updateRequestsBadge();
+        showToast('Anfrage gelöscht', 'success');
+        renderRequestsTab();
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // Antwort / Bestätigen / Ablehnen
   document.querySelectorAll('.reply-send-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
+    btn.addEventListener('click', async () => {
       const id = btn.dataset.id;
       const action = btn.dataset.action;
-      const form = btn.closest('.reply-form');
-      const textarea = form.querySelector('.reply-text');
-      const statusEl = form.querySelector('.reply-status');
+      const replyEl = btn.closest('.req-reply');
+      const textarea = replyEl.querySelector('.reply-text');
+      const statusEl = replyEl.querySelector('.reply-status');
       const message = textarea?.value?.trim();
 
       if (!message) { showToast('Bitte eine Nachricht eingeben', 'error'); return; }
@@ -760,15 +782,20 @@ const bindRequestEvents = () => {
       const req = state.requests.find(r => r.id === id);
       if (!req) return;
 
-      // Beim Bestätigen Vorlage laden falls noch Standard
+      // Beim ersten Klick auf Bestätigen/Ablehnen erst Vorlage laden
       if (action === 'confirm' && textarea.value.trim() === textarea.dataset.replyTpl) {
         textarea.value = textarea.dataset.confirmTpl;
         showToast('Bestätigungstext eingesetzt – bitte prüfen und erneut senden', 'info');
         return;
       }
+      if (action === 'cancel' && textarea.value.trim() === textarea.dataset.replyTpl) {
+        textarea.value = textarea.dataset.cancelTpl;
+        showToast('Absagetext eingesetzt – bitte prüfen und erneut senden', 'info');
+        return;
+      }
 
-      btn.disabled = true;
-      form.querySelectorAll('.reply-send-btn').forEach(b => b.disabled = true);
+      replyEl.querySelectorAll('.reply-send-btn').forEach(b => b.disabled = true);
+      statusEl.style.display = 'none';
 
       try {
         await api(`/api/app/requests/${id}/reply`, {
@@ -776,21 +803,19 @@ const bindRequestEvents = () => {
           body: JSON.stringify({ message, action, requestData: req }),
         });
 
-        if (action === 'confirm') {
-          req.status = 'confirmed';
-          updateRequestsBadge();
-        }
+        if (action === 'confirm') { req.status = 'confirmed'; updateRequestsBadge(); }
+        if (action === 'cancel')  { req.status = 'cancelled'; updateRequestsBadge(); }
 
-        showToast(action === 'confirm' ? 'Buchung bestätigt & E-Mail gesendet' : 'Antwort gesendet', 'success');
-        statusEl.style.display = 'block';
-        statusEl.className = 'form-status success reply-status';
-        statusEl.textContent = action === 'confirm' ? '✓ Bestätigt & E-Mail versendet' : '✓ Antwort versendet';
+        const toastMsg = action === 'confirm' ? 'Buchung bestätigt & E-Mail gesendet'
+          : action === 'cancel' ? 'Absage gesendet' : 'Antwort gesendet';
+        showToast(toastMsg, 'success');
+        renderRequestsTab();
       } catch (err) {
         showToast(err.message, 'error');
         statusEl.style.display = 'block';
         statusEl.className = 'form-status error reply-status';
         statusEl.textContent = err.message;
-        form.querySelectorAll('.reply-send-btn').forEach(b => b.disabled = false);
+        replyEl.querySelectorAll('.reply-send-btn').forEach(b => b.disabled = false);
       }
     });
   });
