@@ -1,6 +1,6 @@
 {
-  "name": "Hiasen Hof Manager",
-  "short_name": "Hiasen Hof",
+  "name": "Camping",
+  "short_name": "Camping",
   "description": "Campingplatz Manager für Hiasen Hof am Thiersee",
   "start_url": "/",
   "display": "standalone",

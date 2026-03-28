@@ -240,7 +240,7 @@ const renderCampingTab = () => {
       <span class="section-title">Ankommend (${incoming.length})</span>
     </div>
     ${incoming.length === 0
-      ? `<div class="empty-state"><div class="empty-state-icon">🗓️</div><p>Keine bestätigten Ankünfte in den nächsten 7 Tagen.</p></div>`
+      ? `<p class="incoming-empty">Keine bestätigten Ankünfte in den nächsten 7 Tagen.</p>`
       : `<div id="incoming-list">${incoming.map(r => renderIncomingCard(r)).join('')}</div>`
     }
 
@@ -517,7 +517,7 @@ const bindCampingEvents = () => {
 
 const renderPitchesTab = () => {
   const panel = document.getElementById('tab-pitches');
-  const weekStart = mondayOfWeek(state.weekFrom || todayStr());
+  const weekStart = state.weekFrom || todayStr();
   const weekEnd = addDays(weekStart, 6);
 
   const zones = [...new Set(state.pitches.map(p => p.zone))];

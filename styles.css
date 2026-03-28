@@ -201,10 +201,10 @@ a.btn-icon { text-decoration: none; }
   right: 0;
   z-index: 10;
   height: var(--nav-height);
-  background: rgba(248, 242, 234, 0.95);
+  background: rgba(30, 55, 45, 0.97);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid var(--line);
+  border-top: none;
   display: flex;
   align-items: stretch;
   padding-bottom: env(safe-area-inset-bottom, 0);
@@ -225,13 +225,14 @@ a.btn-icon { text-decoration: none; }
   position: relative;
 }
 
-.nav-btn.is-active { color: var(--forest); }
+.nav-btn { color: rgba(255,255,255,0.55); }
+.nav-btn.is-active { color: #fff; }
 
 .nav-indicator {
   position: absolute;
   top: 0;
   height: 3px;
-  background: var(--forest);
+  background: rgba(255,255,255,0.8);
   border-radius: 0 0 3px 3px;
   transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1), width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
@@ -883,6 +884,12 @@ a.btn-icon { text-decoration: none; }
 .toast.success { background: var(--forest); color: #fff; }
 .toast.error   { background: var(--red);    color: #fff; }
 .toast.info    { background: var(--lake);   color: #fff; }
+
+.incoming-empty {
+  margin: 0.1rem 0 0.25rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
 
 /* ─── Empty-State ────────────────────────────────────────────────────────── */
 .empty-state {
