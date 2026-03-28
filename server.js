@@ -121,6 +121,14 @@ const normalizeDateOnly = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
+const mondayOfWeek = (dateStr) => {
+  const d = new Date(`${dateStr}T00:00:00`);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const addDaysToDateString = (dateStr, days) => {
   const d = new Date(`${dateStr}T00:00:00`);
   d.setDate(d.getDate() + Number(days));
@@ -173,7 +181,7 @@ const gasGet = async (eventType, params = {}) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.error || `GAS Fehler: ${res.status}`);
 
-  gasCache.set(cacheKey, { data, expiresAt: Date.now() + 5000 });
+  gasCache.set(cacheKey, { data, expiresAt: Date.now() + 60_000 });
   return data;
 };
 
@@ -277,38 +285,46 @@ const getRequestsFromGAS = async () => {
 
 // ─── Stellplätze berechnen ────────────────────────────────────────────────────
 
-const computePitches = (guests, requests) => {
-  const today = todayString();
+const computePitches = (guests, requests, refDate) => {
   const pitches = defaultPitches();
 
   const occupiedMap = new Map();
   for (const g of guests) {
     if (!g.stellplatz || !g.stellplatznummer) continue;
-    const key = `${normalizePitchZone(g.stellplatz)}:${g.stellplatznummer}`;
-    occupiedMap.set(key, g);
+    const arrival = normalizeDateOnly(g.arrival);
+    const departure = normalizeDateOnly(g.departure);
+    if (!arrival || !departure) continue;
+    if (arrival <= refDate && departure > refDate) {
+      const key = `${normalizePitchZone(g.stellplatz)}:${g.stellplatznummer}`;
+      occupiedMap.set(key, g);
+    }
   }
 
-  const reservedMap = new Map();
+  // Build future bookings per pitch (all confirmed with arrival > refDate), sorted by arrival
+  const futureMap = new Map();
   for (const r of requests) {
     if (r.status !== 'confirmed' || !r.preferredPitchZone || !r.preferredPitchNumber) continue;
-    if (r.arrival <= today) continue;
+    const arrival = normalizeDateOnly(r.arrival);
+    if (!arrival || arrival <= refDate) continue;
     const key = `${normalizePitchZone(r.preferredPitchZone)}:${r.preferredPitchNumber}`;
-    if (!occupiedMap.has(key)) reservedMap.set(key, r);
+    if (!futureMap.has(key)) futureMap.set(key, []);
+    futureMap.get(key).push(r);
+  }
+  for (const list of futureMap.values()) {
+    list.sort((a, b) => normalizeDateOnly(a.arrival).localeCompare(normalizeDateOnly(b.arrival)));
   }
 
   return pitches.map(pitch => {
     const key = `${pitch.zone}:${pitch.number}`;
-    let status = 'free';
-    let currentGuest = null;
-    let nextBooking = null;
+    const futureList = futureMap.get(key) || [];
+    const nextBooking = futureList[0] || null;
     if (occupiedMap.has(key)) {
-      status = 'occupied';
-      currentGuest = occupiedMap.get(key);
-    } else if (reservedMap.has(key)) {
-      status = 'reserved';
-      nextBooking = reservedMap.get(key);
+      return { ...pitch, status: 'occupied', currentGuest: occupiedMap.get(key), nextBooking };
+    } else if (nextBooking) {
+      return { ...pitch, status: 'reserved', currentGuest: null, nextBooking };
+    } else {
+      return { ...pitch, status: 'free', currentGuest: null, nextBooking: null };
     }
-    return { ...pitch, status, currentGuest, nextBooking };
   });
 };
 
@@ -455,15 +471,16 @@ app.get('/api/app/bootstrap', requireAuth, async (req, res) => {
     const requests = [...gasRequests, ...(store.requests || [])].filter(r => r.type === 'booking');
 
     const today = todayString();
-    const pitches = computePitches(guests, requests);
-    const weekData = computeWeekData(guests, requests, today);
+    const pitches = computePitches(guests, requests, today);
+    const weekStart = mondayOfWeek(today);
+    const weekData = computeWeekData(guests, requests, weekStart);
 
     res.json({
       guests,
       requests,
       pitches,
       weekData,
-      weekFrom: today,
+      weekFrom: weekStart,
       settings: store.settings,
       gasEnabled: GAS_ENABLED && Boolean(GAS_URL),
       resendConfigured: isResendConfigured(),
@@ -474,6 +491,19 @@ app.get('/api/app/bootstrap', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/app/pitches', requireAuth, async (req, res) => {
+  try {
+    const refDate = normalizeDateOnly(req.query.date) || todayString();
+    const store = loadStore();
+    const [guestsRaw, requestsRaw] = await Promise.all([getGuestsFromGAS(), getRequestsFromGAS()]);
+    const guests = [...(guestsRaw ?? []), ...(store.guests || [])];
+    const requests = [...(requestsRaw ?? []), ...(store.requests || [])].filter(r => r.type === 'booking');
+    res.json({ pitches: computePitches(guests, requests, refDate) });
+  } catch (err) {
+    res.status(500).json({ error: 'Stellplatzdaten konnten nicht geladen werden.' });
+  }
+});
+
 app.get('/api/app/week', requireAuth, async (req, res) => {
   try {
     const fromDate = normalizeDateOnly(req.query.from) || todayString();
@@ -481,8 +511,9 @@ app.get('/api/app/week', requireAuth, async (req, res) => {
     const [guestsRaw, requestsRaw] = await Promise.all([getGuestsFromGAS(), getRequestsFromGAS()]);
     const guests = [...(guestsRaw ?? []), ...(store.guests || [])];
     const requests = [...(requestsRaw ?? []), ...(store.requests || [])].filter(r => r.type === 'booking');
-    const weekData = computeWeekData(guests, requests, fromDate);
-    res.json({ weekData, weekFrom: fromDate });
+    const weekStart = mondayOfWeek(fromDate);
+    const weekData = computeWeekData(guests, requests, weekStart);
+    res.json({ weekData, weekFrom: weekStart });
   } catch (err) {
     res.status(500).json({ error: 'Wochendaten konnten nicht geladen werden.' });
   }

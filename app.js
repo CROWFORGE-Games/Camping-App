@@ -14,6 +14,7 @@ const state = {
   settings: {},
   gasEnabled: false,
   resendConfigured: false,
+  guestSearch: '',
 };
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -65,6 +66,24 @@ const mondayOfWeek = (dateStr) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// ─── Nav-Indicator ────────────────────────────────────────────────────────────
+
+const updateNavIndicator = () => {
+  const activeBtn = document.querySelector('.nav-btn.is-active');
+  const indicator = document.getElementById('nav-indicator');
+  if (!activeBtn || !indicator) return;
+  indicator.style.left = `${activeBtn.offsetLeft}px`;
+  indicator.style.width = `${activeBtn.offsetWidth}px`;
+};
+
+const updateRequestsBadge = () => {
+  const count = state.requests.filter(r => r.status === 'new').length;
+  const badge = document.getElementById('requests-badge');
+  if (!badge) return;
+  badge.textContent = count > 9 ? '9+' : count;
+  badge.classList.toggle('hidden', count === 0);
+};
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 const showToast = (msg, type = 'info') => {
@@ -114,7 +133,7 @@ const loadBootstrap = async () => {
   state.pitches = data.pitches || [];
   state.weekData = data.weekData || [];
   state.weekFrom = data.weekFrom || todayStr();
-  state.selectedWeekDay = state.weekFrom;
+  state.selectedWeekDay = todayStr();
   state.settings = data.settings || {};
   state.gasEnabled = Boolean(data.gasEnabled);
   state.resendConfigured = Boolean(data.resendConfigured);
@@ -143,6 +162,7 @@ const switchTab = (tab) => {
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('hidden', panel.id !== `tab-${tab}`);
   });
+  updateNavIndicator();
   renderActiveTab();
 };
 
@@ -180,10 +200,41 @@ const renderCampingTab = () => {
     r.status === 'confirmed' && r.arrival >= today && r.arrival <= soon
   ).sort((a, b) => a.arrival.localeCompare(b.arrival));
 
-  const guests = [...state.guests].sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const search = state.guestSearch || '';
+  const allGuests = state.guests;
+  const guests = allGuests.filter(g =>
+    !search ||
+    g.name.toLowerCase().includes(search.toLowerCase()) ||
+    `${g.stellplatz} ${g.stellplatznummer}`.toLowerCase().includes(search.toLowerCase())
+  ).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+  const arrivalsToday = state.requests.filter(r => r.status === 'confirmed' && r.arrival === today).length;
+  const departuresToday = allGuests.filter(g => g.departure === today).length;
+  const totalPitches = state.pitches.length;
+  const occupiedPitches = state.pitches.filter(p => p.status === 'occupied').length;
+  const occupancyPct = totalPitches > 0 ? Math.round(occupiedPitches / totalPitches * 100) : '–';
 
   panel.innerHTML = `
     ${!state.gasEnabled ? `<p class="gas-warning">⚠️ Google Sheets nicht verbunden – lokaler Modus</p>` : ''}
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <span class="stat-value">${allGuests.length}</span>
+        <span class="stat-label">Gäste aktiv</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">${arrivalsToday}</span>
+        <span class="stat-label">Ankünfte heute</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">${departuresToday}</span>
+        <span class="stat-label">Abreisen heute</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-value">${occupancyPct}${typeof occupancyPct === 'number' ? '%' : ''}</span>
+        <span class="stat-label">Auslastung</span>
+      </div>
+    </div>
 
     <div class="section-header">
       <span class="section-title">Ankommend (${incoming.length})</span>
@@ -194,11 +245,16 @@ const renderCampingTab = () => {
     }
 
     <div class="section-header" style="margin-top:0.5rem">
-      <span class="section-title">Aktuelle Gäste (${guests.length})</span>
+      <span class="section-title">Aktuelle Gäste (${allGuests.length})</span>
       <button class="btn btn-sm btn-primary" id="add-guest-btn">+ Gast</button>
     </div>
+    <div class="search-wrap">
+      <input class="input search-input" type="search" id="guest-search"
+        placeholder="Name oder Stellplatz suchen…"
+        value="${escHtml(search)}" autocomplete="off" />
+    </div>
     ${guests.length === 0
-      ? `<div class="empty-state"><div class="empty-state-icon">⛺</div><p>Keine Gäste eingecheckt.</p></div>`
+      ? `<div class="empty-state"><div class="empty-state-icon">⛺</div><p>${search ? 'Keine Treffer.' : 'Keine Gäste eingecheckt.'}</p></div>`
       : `<div id="guests-list">${guests.map(g => renderGuestCard(g)).join('')}</div>`
     }
   `;
@@ -260,12 +316,67 @@ const renderGuestCard = (guest) => `
           aria-pressed="${guest.paid ? 'true' : 'false'}">
         </button>
       </div>
-      <button class="btn btn-outline btn-sm checkout-btn" data-id="${escHtml(guest.id)}" style="margin-top:0.5rem">
-        Auschecken
-      </button>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn btn-outline btn-sm checkout-btn" data-id="${escHtml(guest.id)}">
+          Auschecken
+        </button>
+        <button class="btn btn-ghost btn-sm meldezettel-btn" data-id="${escHtml(guest.id)}">
+          🖨 Meldezettel
+        </button>
+      </div>
     </div>
   </div>
 `;
+
+const printMeldezettel = (guestId) => {
+  const guest = state.guests.find(g => g.id === guestId);
+  if (!guest) return;
+  const w = window.open('', '_blank', 'width=720,height=960');
+  const nights = (() => {
+    const a = new Date(`${guest.arrival}T00:00:00`);
+    const d = new Date(`${guest.departure}T00:00:00`);
+    return Math.max(1, Math.round((d - a) / 86400000));
+  })();
+  w.document.write(`<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<title>Meldezettel – ${escHtml(guest.name)}</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:2cm;color:#000;font-size:12pt}
+  h1{font-size:20pt;margin:0 0 4px}
+  .sub{color:#555;font-size:11pt;margin:0 0 1.5cm}
+  table{width:100%;border-collapse:collapse}
+  td{padding:7px 10px;border-bottom:1px solid #ddd;vertical-align:top}
+  td:first-child{font-weight:bold;width:38%;color:#333}
+  .sig{margin-top:2.5cm;display:flex;gap:3cm}
+  .sig-line{flex:1;border-top:1px solid #000;padding-top:6px;font-size:10pt;color:#555}
+  .footer{margin-top:1.5cm;font-size:9pt;color:#999;text-align:center}
+  @media print{body{padding:1cm}}
+</style></head><body>
+<h1>Meldezettel</h1>
+<p class="sub">Hiasen Hof am Thiersee · Campingplatz</p>
+<table>
+  <tr><td>Name</td><td>${escHtml(guest.name)}</td></tr>
+  <tr><td>E-Mail</td><td>${escHtml(guest.email || '–')}</td></tr>
+  <tr><td>Telefon</td><td>${escHtml(guest.phone || '–')}</td></tr>
+  <tr><td>Stellplatz</td><td>${escHtml(guest.stellplatz)} Nr. ${escHtml(String(guest.stellplatznummer))}</td></tr>
+  <tr><td>Anreise</td><td>${fmtDate(guest.arrival)}</td></tr>
+  <tr><td>Abreise</td><td>${fmtDate(guest.departure)}</td></tr>
+  <tr><td>Aufenthalt</td><td>${nights} Nacht${nights !== 1 ? 'e' : ''}</td></tr>
+  <tr><td>Erwachsene</td><td>${guest.adults || 1}</td></tr>
+  <tr><td>Kinder</td><td>${guest.children || 0}${guest.childrenAge ? ` (Alter: ${escHtml(guest.childrenAge)})` : ''}</td></tr>
+  <tr><td>Fahrzeug / Typ</td><td>${escHtml(guest.pitchTypes || '–')}</td></tr>
+  <tr><td>Bezahlt</td><td>${guest.paid ? 'Ja ✓' : 'Nein'}</td></tr>
+  ${guest.notes ? `<tr><td>Notizen</td><td>${escHtml(guest.notes)}</td></tr>` : ''}
+</table>
+<div class="sig">
+  <div class="sig-line">Unterschrift Gast</div>
+  <div class="sig-line">Datum / Stempel</div>
+</div>
+<p class="footer">Ausgestellt am ${new Date().toLocaleDateString('de-AT')} · Hiasen Hof am Thiersee · +43 664 885 305 24</p>
+<script>window.print();window.onafterprint=()=>window.close();<\/script>
+</body></html>`);
+  w.document.close();
+};
 
 const bindCampingEvents = () => {
   // Karten auf/zuklappen
@@ -315,6 +426,26 @@ const bindCampingEvents = () => {
         btn.classList.toggle('is-on', !paid);
         btn.dataset.paid = String(!paid);
       }
+    });
+  });
+
+  // Schnellsuche
+  document.getElementById('guest-search')?.addEventListener('input', (e) => {
+    state.guestSearch = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    renderCampingTab();
+    const newInput = document.getElementById('guest-search');
+    if (newInput) {
+      newInput.focus();
+      try { newInput.setSelectionRange(cursorPos, cursorPos); } catch {}
+    }
+  });
+
+  // Meldezettel drucken
+  document.querySelectorAll('.meldezettel-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      printMeldezettel(btn.dataset.id);
     });
   });
 
@@ -375,7 +506,7 @@ const renderPitchesTab = () => {
     </div>
 
     <!-- Zonen als Dropdowns -->
-    <div style="margin-top:0.25rem">
+    <div class="zone-groups" style="margin-top:0.25rem">
       ${zones.map(zone => renderZoneGroup(zone)).join('')}
     </div>
   `;
@@ -392,11 +523,11 @@ const renderZoneGroup = (zone) => {
   const reserved = pitches.filter(p => p.status === 'reserved').length;
   const occupied = pitches.filter(p => p.status === 'occupied').length;
 
-  const countDots = [
-    free     > 0 ? `<span class="zone-count"><span class="status-dot free"></span>${free} frei</span>`       : '',
-    reserved > 0 ? `<span class="zone-count"><span class="status-dot reserved"></span>${reserved} res.</span>` : '',
-    occupied > 0 ? `<span class="zone-count"><span class="status-dot occupied"></span>${occupied} bel.</span>` : '',
-  ].filter(Boolean).join('');
+  const countDots = `
+    <span class="zone-count ${free === 0 ? 'is-zero' : ''}"><span class="status-dot free"></span>${free} frei</span>
+    <span class="zone-count ${reserved === 0 ? 'is-zero' : ''}"><span class="status-dot reserved"></span>${reserved} res.</span>
+    <span class="zone-count ${occupied === 0 ? 'is-zero' : ''}"><span class="status-dot occupied"></span>${occupied} bel.</span>
+  `;
 
   return `
     <div class="zone-group">
@@ -415,14 +546,19 @@ const renderZoneGroup = (zone) => {
 const renderPitchRow = (pitch) => {
   const guestName = pitch.currentGuest?.name
     || (pitch.nextBooking?.name ? `ab ${fmtDate(pitch.nextBooking.arrival)}: ${pitch.nextBooking.name}` : '');
+  const departure = pitch.currentGuest?.departure
+    || pitch.nextBooking?.departure
+    || '';
 
   return `
     <div class="pitch-row">
       <span class="status-dot ${escHtml(pitch.status)}"></span>
       <span class="pitch-row-number">Nr. ${escHtml(String(pitch.number))}</span>
       ${guestName
-        ? `<span class="pitch-row-guest">${escHtml(guestName)}</span>`
-        : `<span class="pitch-row-free">Frei</span>`
+        ? `<span class="pitch-row-guest">${escHtml(guestName)}</span>${departure ? `<span class="pitch-row-until">bis ${escHtml(fmtDate(departure))}</span>` : ''}`
+        : pitch.nextBooking
+          ? `<span class="pitch-row-free">Frei</span><span class="pitch-row-until">frei bis ${escHtml(fmtDate(pitch.nextBooking.arrival))}</span>`
+          : `<span class="pitch-row-free">Frei</span>`
       }
     </div>
   `;
@@ -433,7 +569,9 @@ const bindPitchEvents = () => {
     const newFrom = addDays(state.weekFrom, -7);
     try {
       await loadWeek(newFrom);
-      state.selectedWeekDay = newFrom;
+      state.selectedWeekDay = state.weekFrom;
+      const data = await api(`/api/app/pitches?date=${state.selectedWeekDay}`);
+      state.pitches = data.pitches || [];
       renderPitchesTab();
     } catch (err) { showToast(err.message, 'error'); }
   });
@@ -442,34 +580,49 @@ const bindPitchEvents = () => {
     const newFrom = addDays(state.weekFrom, 7);
     try {
       await loadWeek(newFrom);
-      state.selectedWeekDay = newFrom;
+      state.selectedWeekDay = state.weekFrom;
+      const data = await api(`/api/app/pitches?date=${state.selectedWeekDay}`);
+      state.pitches = data.pitches || [];
       renderPitchesTab();
     } catch (err) { showToast(err.message, 'error'); }
   });
 
   document.querySelectorAll('.week-day').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       state.selectedWeekDay = btn.dataset.date;
       document.querySelectorAll('.week-day').forEach(b => b.classList.remove('is-selected'));
       btn.classList.add('is-selected');
+      try {
+        const data = await api(`/api/app/pitches?date=${state.selectedWeekDay}`);
+        state.pitches = data.pitches || [];
+        const zonesEl = document.querySelector('#tab-pitches .zone-groups');
+        if (zonesEl) {
+          const zones = [...new Set(state.pitches.map(p => p.zone))];
+          zonesEl.innerHTML = zones.map(zone => renderZoneGroup(zone)).join('');
+          bindZoneEvents();
+        }
+      } catch (err) { showToast(err.message, 'error'); }
     });
   });
 
-  // Zonen auf-/zuklappen
+  bindZoneEvents();
+};
+
+const bindZoneEvents = () => {
   if (!state.openZones) state.openZones = new Set();
   document.querySelectorAll('.zone-header').forEach(btn => {
     btn.addEventListener('click', () => {
       const zone = btn.dataset.zone;
-      const pitches = btn.nextElementSibling;
+      const pitchesEl = btn.nextElementSibling;
       const isOpen = state.openZones.has(zone);
       if (isOpen) {
         state.openZones.delete(zone);
         btn.classList.remove('is-open');
-        pitches.classList.add('hidden');
+        pitchesEl.classList.add('hidden');
       } else {
         state.openZones.add(zone);
         btn.classList.add('is-open');
-        pitches.classList.remove('hidden');
+        pitchesEl.classList.remove('hidden');
       }
     });
   });
@@ -625,6 +778,7 @@ const bindRequestEvents = () => {
 
         if (action === 'confirm') {
           req.status = 'confirmed';
+          updateRequestsBadge();
         }
 
         showToast(action === 'confirm' ? 'Buchung bestätigt & E-Mail gesendet' : 'Antwort gesendet', 'success');
@@ -696,11 +850,32 @@ const closeModal = () => {
   document.getElementById('modal-overlay').classList.add('hidden');
 };
 
+const calcEstimatedPrice = () => {
+  const arrival = document.getElementById('mg-arrival')?.value;
+  const departure = document.getElementById('mg-departure')?.value;
+  const adults = parseInt(document.getElementById('mg-adults')?.value) || 1;
+  const children = parseInt(document.getElementById('mg-children')?.value) || 0;
+  const el = document.getElementById('mg-price-calc');
+  if (!el) return;
+  if (!arrival || !departure) { el.style.display = 'none'; return; }
+  const nights = Math.round((new Date(`${departure}T00:00:00`) - new Date(`${arrival}T00:00:00`)) / 86400000);
+  if (nights <= 0) { el.style.display = 'none'; return; }
+  const total = nights * (8 + adults * 7.5 + children * 4);
+  el.textContent = `ca. € ${total.toFixed(2).replace('.', ',')}  ·  ${nights} Nacht${nights !== 1 ? 'e' : ''}  ·  ${adults} Erw.${children > 0 ? ` + ${children} Kind${children !== 1 ? 'er' : ''}` : ''}`;
+  el.style.display = 'block';
+};
+
 const bindModalEvents = () => {
   document.getElementById('modal-close').addEventListener('click', closeModal);
   document.getElementById('modal-cancel').addEventListener('click', closeModal);
   document.getElementById('modal-overlay').addEventListener('click', (e) => {
     if (e.target === document.getElementById('modal-overlay')) closeModal();
+  });
+
+  // Preisrechner
+  ['mg-arrival', 'mg-departure', 'mg-adults', 'mg-children'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', calcEstimatedPrice);
+    document.getElementById(id)?.addEventListener('input', calcEstimatedPrice);
   });
 
   // Bezahlt-Toggle im Modal
@@ -780,6 +955,8 @@ const boot = async () => {
       setLoading(false);
       showApp();
       renderCampingTab();
+      updateRequestsBadge();
+      requestAnimationFrame(updateNavIndicator);
     } catch (err) {
       errorEl.textContent = err.message;
     } finally {
@@ -797,6 +974,9 @@ const boot = async () => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
+  requestAnimationFrame(updateNavIndicator);
+  window.addEventListener('resize', updateNavIndicator);
+
   bindModalEvents();
 
   // Auto-Login: Token prüfen
@@ -808,6 +988,8 @@ const boot = async () => {
         await loadBootstrap();
         showApp();
         renderCampingTab();
+        updateRequestsBadge();
+        requestAnimationFrame(updateNavIndicator);
       } else {
         clearToken();
         showLogin();

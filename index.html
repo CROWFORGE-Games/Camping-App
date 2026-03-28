@@ -11,6 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/png" href="./assets/HiasenHofLogo.png" />
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#3f5d4f" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -50,6 +52,11 @@
         <span>Campingplatz Manager</span>
       </div>
     </div>
+    <a class="btn-icon" href="https://www.hiasenhof-thiersee.at" target="_blank" rel="noopener" title="Zur Webseite" aria-label="Zur Webseite">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+      </svg>
+    </a>
     <button class="btn-icon" id="logout-btn" title="Abmelden" aria-label="Abmelden">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
@@ -73,6 +80,7 @@
 
   <!-- Bottom-Nav -->
   <nav class="bottom-nav" role="tablist" aria-label="Hauptnavigation">
+    <div class="nav-indicator" id="nav-indicator" aria-hidden="true"></div>
     <button class="nav-btn is-active" data-tab="camping" role="tab" aria-selected="true">
       <span class="nav-icon">⛺</span>
       <span>Camping</span>
@@ -82,7 +90,7 @@
       <span>Stellplätze</span>
     </button>
     <button class="nav-btn" data-tab="requests" role="tab" aria-selected="false">
-      <span class="nav-icon">📋</span>
+      <span class="nav-icon nav-icon-wrap">📋<span class="nav-badge hidden" id="requests-badge"></span></span>
       <span>Anfragen</span>
     </button>
   </nav>
@@ -137,6 +145,7 @@
           <input class="input" type="date" id="mg-departure" name="departure" required />
         </div>
       </div>
+      <p id="mg-price-calc" class="price-calc-hint" style="display:none"></p>
 
       <div class="form-row" style="margin-top:0.75rem">
         <div class="form-group">
@@ -195,5 +204,10 @@
 </div>
 
 <script src="./app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+</script>
 </body>
 </html>
