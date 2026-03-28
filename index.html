@@ -57,9 +57,9 @@
         <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
       </svg>
     </a>
-    <button class="btn-icon" id="logout-btn" title="Abmelden" aria-label="Abmelden">
+    <button class="btn-icon" id="settings-btn" title="Einstellungen" aria-label="Einstellungen">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
     </button>
   </header>
@@ -192,6 +192,64 @@
         <button type="submit" class="btn btn-primary" style="flex:1" id="modal-submit">Einchecken</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════ MODAL: EINSTELLUNGEN ══ -->
+<div id="settings-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="modal" id="settings-panel">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2 class="modal-title" id="settings-title">Einstellungen</h2>
+      <button class="btn-icon" id="settings-close" aria-label="Schließen">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- E-Mail & Kontakt -->
+    <p class="settings-section-title">E-Mail &amp; Kontakt</p>
+    <form id="settings-form" autocomplete="off">
+      <div class="form-group">
+        <label for="set-sender-name">Absendername</label>
+        <input class="input" type="text" id="set-sender-name" placeholder="Camping Hiasen Hof" />
+      </div>
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="set-recipient-email">Benachrichtigungs-E-Mail</label>
+        <input class="input" type="email" id="set-recipient-email" placeholder="info@hiasenhof.at" />
+      </div>
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="set-phone">Telefonnummer (für Meldezettel)</label>
+        <input class="input" type="tel" id="set-phone" placeholder="+43 664 885 305 24" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-full" style="margin-top:1rem">Speichern</button>
+      <p id="settings-status" class="form-status" style="display:none;margin-top:0.5rem"></p>
+    </form>
+
+    <!-- Passwort -->
+    <p class="settings-section-title" style="margin-top:1.25rem">Passwort ändern</p>
+    <form id="pw-form" autocomplete="off">
+      <div class="form-group">
+        <label for="pw-current">Aktuelles Passwort</label>
+        <input class="input" type="password" id="pw-current" autocomplete="current-password" />
+      </div>
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="pw-new">Neues Passwort</label>
+        <input class="input" type="password" id="pw-new" autocomplete="new-password" />
+      </div>
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="pw-confirm">Neues Passwort bestätigen</label>
+        <input class="input" type="password" id="pw-confirm" autocomplete="new-password" />
+      </div>
+      <button type="submit" class="btn btn-outline btn-full" style="margin-top:1rem">Passwort ändern</button>
+      <p id="pw-status" class="form-status" style="display:none;margin-top:0.5rem"></p>
+    </form>
+
+    <!-- Abmelden -->
+    <div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--line)">
+      <button class="btn btn-danger btn-full" id="settings-logout-btn">Abmelden</button>
+    </div>
   </div>
 </div>
 

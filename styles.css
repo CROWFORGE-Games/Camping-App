@@ -826,6 +826,15 @@ a.btn-icon { text-decoration: none; }
   color: var(--text);
 }
 
+.settings-section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-bottom: 0.6rem;
+}
+
 /* ─── Toast ──────────────────────────────────────────────────────────────── */
 #toast-container {
   position: fixed;

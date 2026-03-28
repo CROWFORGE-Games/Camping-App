@@ -821,6 +821,105 @@ const bindRequestEvents = () => {
   });
 };
 
+// ─── MODAL: EINSTELLUNGEN ─────────────────────────────────────────────────────
+
+const openSettingsModal = () => {
+  const s = state.settings || {};
+  document.getElementById('set-sender-name').value = s.senderName || '';
+  document.getElementById('set-recipient-email').value = s.bookingRecipientEmail || '';
+  document.getElementById('set-phone').value = s.bookingPhone || '';
+  document.getElementById('settings-status').style.display = 'none';
+  document.getElementById('pw-status').style.display = 'none';
+  document.getElementById('pw-form').reset();
+  document.getElementById('settings-overlay').classList.remove('hidden');
+};
+
+const closeSettingsModal = () => {
+  document.getElementById('settings-overlay').classList.add('hidden');
+};
+
+const bindSettingsEvents = () => {
+  document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+  document.getElementById('settings-close').addEventListener('click', closeSettingsModal);
+  document.getElementById('settings-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('settings-overlay')) closeSettingsModal();
+  });
+
+  document.getElementById('settings-logout-btn').addEventListener('click', () => {
+    closeSettingsModal();
+    if (confirm('Wirklich abmelden?')) logout();
+  });
+
+  // Einstellungen speichern
+  document.getElementById('settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('[type="submit"]');
+    const statusEl = document.getElementById('settings-status');
+    btn.disabled = true;
+    statusEl.style.display = 'none';
+    try {
+      const data = await api('/api/app/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          senderName: document.getElementById('set-sender-name').value.trim(),
+          bookingRecipientEmail: document.getElementById('set-recipient-email').value.trim(),
+          bookingPhone: document.getElementById('set-phone').value.trim(),
+        }),
+      });
+      state.settings = data.settings;
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status success';
+      statusEl.textContent = '✓ Einstellungen gespeichert';
+      showToast('Einstellungen gespeichert', 'success');
+    } catch (err) {
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status error';
+      statusEl.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Passwort ändern
+  document.getElementById('pw-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('[type="submit"]');
+    const statusEl = document.getElementById('pw-status');
+    const newPw = document.getElementById('pw-new').value;
+    const confirmPw = document.getElementById('pw-confirm').value;
+    statusEl.style.display = 'none';
+
+    if (newPw !== confirmPw) {
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status error';
+      statusEl.textContent = 'Passwörter stimmen nicht überein.';
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      await api('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: document.getElementById('pw-current').value,
+          newPassword: newPw,
+        }),
+      });
+      e.target.reset();
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status success';
+      statusEl.textContent = '✓ Passwort erfolgreich geändert';
+      showToast('Passwort geändert', 'success');
+    } catch (err) {
+      statusEl.style.display = 'block';
+      statusEl.className = 'form-status error';
+      statusEl.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+};
+
 // ─── MODAL: GAST ANLEGEN / EINCHECKEN ────────────────────────────────────────
 
 const openGuestModal = (prefill = null) => {
@@ -991,9 +1090,7 @@ const boot = async () => {
     }
   });
 
-  document.getElementById('logout-btn').addEventListener('click', () => {
-    if (confirm('Wirklich abmelden?')) logout();
-  });
+  bindSettingsEvents();
 
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));

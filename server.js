@@ -676,6 +676,42 @@ app.post('/api/app/requests/:id/reply', requireAuth, async (req, res) => {
   }
 });
 
+// Einstellungen speichern
+app.patch('/api/app/settings', requireAuth, async (req, res) => {
+  try {
+    const { senderName, bookingRecipientEmail, bookingPhone } = req.body || {};
+    const store = loadStore();
+    if (senderName !== undefined) store.settings.senderName = String(senderName).trim();
+    if (bookingRecipientEmail !== undefined) store.settings.bookingRecipientEmail = String(bookingRecipientEmail).trim();
+    if (bookingPhone !== undefined) store.settings.bookingPhone = String(bookingPhone).trim();
+    saveStore(store);
+    storeCache = null;
+    res.json({ ok: true, settings: store.settings });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Fehler beim Speichern.' });
+  }
+});
+
+// Passwort ändern
+app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Alle Felder erforderlich.' });
+    if (String(newPassword).length < 6) return res.status(400).json({ error: 'Neues Passwort muss mindestens 6 Zeichen lang sein.' });
+    const store = loadStore();
+    const user = (store.users || []).find(u => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) return res.status(401).json({ error: 'Aktuelles Passwort falsch.' });
+    user.passwordHash = await bcrypt.hash(newPassword, 12);
+    saveStore(store);
+    storeCache = null;
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Fehler beim Passwort ändern.' });
+  }
+});
+
 // Anfrage löschen
 app.delete('/api/app/requests/:id', requireAuth, async (req, res) => {
   try {
