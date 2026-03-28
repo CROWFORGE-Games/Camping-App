@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'hiasen-hof-v2';
+const CACHE_NAME = 'hiasen-hof-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
