@@ -358,11 +358,22 @@ const computeWeekData = (guests, requests, fromDate) => {
 
 const isResendConfigured = () => Boolean(RESEND_API_KEY && RESEND_FROM_EMAIL);
 
+const getGasSenderName = async () => {
+  try {
+    const data = await gasGet('settings', { sheetName: 'Einstellungen' });
+    if (!Array.isArray(data?.rows)) return null;
+    const row = data.rows.find(r => String(r.key || '').trim() === 'senderName');
+    return (row && String(row.value || '').trim()) || null;
+  } catch {
+    return null;
+  }
+};
+
 const sendResendEmail = async ({ to, subject, text }) => {
   if (!isResendConfigured()) throw new Error('E-Mail-Versand ist nicht konfiguriert (RESEND_API_KEY / RESEND_FROM_EMAIL fehlt).');
 
   const store = loadStore();
-  const senderName = store.settings.senderName || RESEND_FROM_NAME || 'Hiasen Hof';
+  const senderName = (await getGasSenderName()) || store.settings.senderName || RESEND_FROM_NAME || 'Hiasen Hof';
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -732,6 +743,10 @@ app.delete('/api/app/requests/:id', requireAuth, async (req, res) => {
 // Statische Dateien + SPA-Fallback
 app.use(express.static(ROOT_DIR, { index: false }));
 app.get('*', (_req, res) => res.sendFile(path.join(ROOT_DIR, 'index.html')));
+
+// ─── Health check (Cloud Run) ─────────────────────────────────────────────────
+
+app.get('/health', (_req, res) => res.json({ ok: true }));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
