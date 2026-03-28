@@ -483,15 +483,14 @@ app.get('/api/app/bootstrap', requireAuth, async (req, res) => {
 
     const today = todayString();
     const pitches = computePitches(guests, requests, today);
-    const weekStart = mondayOfWeek(today);
-    const weekData = computeWeekData(guests, requests, weekStart);
+    const weekData = computeWeekData(guests, requests, today);
 
     res.json({
       guests,
       requests,
       pitches,
       weekData,
-      weekFrom: weekStart,
+      weekFrom: today,
       settings: store.settings,
       gasEnabled: GAS_ENABLED && Boolean(GAS_URL),
       resendConfigured: isResendConfigured(),
@@ -522,9 +521,8 @@ app.get('/api/app/week', requireAuth, async (req, res) => {
     const [guestsRaw, requestsRaw] = await Promise.all([getGuestsFromGAS(), getRequestsFromGAS()]);
     const guests = [...(guestsRaw ?? []), ...(store.guests || [])];
     const requests = [...(requestsRaw ?? []), ...(store.requests || [])].filter(r => r.type === 'booking');
-    const weekStart = mondayOfWeek(fromDate);
-    const weekData = computeWeekData(guests, requests, weekStart);
-    res.json({ weekData, weekFrom: weekStart });
+    const weekData = computeWeekData(guests, requests, fromDate);
+    res.json({ weekData, weekFrom: fromDate });
   } catch (err) {
     res.status(500).json({ error: 'Wochendaten konnten nicht geladen werden.' });
   }

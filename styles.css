@@ -201,10 +201,10 @@ a.btn-icon { text-decoration: none; }
   right: 0;
   z-index: 10;
   height: var(--nav-height);
-  background: rgba(30, 55, 45, 0.97);
+  background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border-top: none;
+  border-top: 1px solid rgba(180, 165, 145, 0.4);
   display: flex;
   align-items: stretch;
   padding-bottom: env(safe-area-inset-bottom, 0);
@@ -225,14 +225,14 @@ a.btn-icon { text-decoration: none; }
   position: relative;
 }
 
-.nav-btn { color: rgba(255,255,255,0.55); }
-.nav-btn.is-active { color: #fff; }
+.nav-btn { color: var(--text-muted); }
+.nav-btn.is-active { color: var(--forest); }
 
 .nav-indicator {
   position: absolute;
   top: 0;
   height: 3px;
-  background: rgba(255,255,255,0.8);
+  background: var(--forest);
   border-radius: 0 0 3px 3px;
   transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1), width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
