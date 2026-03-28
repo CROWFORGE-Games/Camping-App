@@ -534,7 +534,7 @@ app.post('/api/app/guests', requireAuth, async (req, res) => {
     const body = req.body || {};
     const guest = {
       id: crypto.randomUUID(),
-      checkedInAt: new Date().toISOString(),
+      checkedInAt: new Date().toLocaleString('de-AT', { timeZone: 'Europe/Vienna', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       name: String(body.name || '').trim(),
       email: String(body.email || '').trim(),
       phone: String(body.phone || '').trim(),

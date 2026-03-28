@@ -425,6 +425,8 @@ a.btn-icon { text-decoration: none; }
 .detail-row-text { color: var(--text); flex: 1; min-width: 0; word-break: break-word; }
 
 .detail-row-label { color: var(--text-soft); font-size: 0.75rem; }
+.detail-link { color: var(--lake); text-decoration: none; }
+.detail-link:active { opacity: 0.7; }
 
 .detail-divider {
   height: 1px;

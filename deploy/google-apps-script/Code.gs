@@ -476,7 +476,7 @@ function appendCamping(spreadsheet, payload) {
 
   const values = [[
     row.id || '',
-    row.checkedInAt || new Date().toISOString(),
+    row.checkedInAt || Utilities.formatDate(new Date(), 'Europe/Vienna', 'dd.MM.yyyy HH:mm'),
     row.name || '',
     row.email || '',
     row.phone || '',

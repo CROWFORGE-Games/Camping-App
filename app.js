@@ -189,6 +189,20 @@ const detailRow = (icon, text, label = '') => text
      </div>`
   : '';
 
+const emailRow = (email) => email
+  ? `<div class="detail-row">
+       <span class="detail-row-icon">📧</span>
+       <div class="detail-row-text"><a href="mailto:${escHtml(email)}" class="detail-link">${escHtml(email)}</a></div>
+     </div>`
+  : '';
+
+const phoneRow = (phone) => phone
+  ? `<div class="detail-row">
+       <span class="detail-row-icon">📞</span>
+       <div class="detail-row-text"><a href="tel:${escHtml(phone.replace(/\s/g, ''))}" class="detail-link">${escHtml(phone)}</a></div>
+     </div>`
+  : '';
+
 // ─── TAB: CAMPING ─────────────────────────────────────────────────────────────
 
 const renderCampingTab = () => {
@@ -276,8 +290,8 @@ const renderIncomingCard = (req) => `
     </button>
     <div class="card-body">
       ${detailRow('📅', `${fmtDate(req.arrival)} – ${fmtDate(req.departure)}`, 'Zeitraum')}
-      ${detailRow('📧', req.email)}
-      ${detailRow('📞', req.phone)}
+      ${emailRow(req.email)}
+      ${phoneRow(req.phone)}
       ${detailRow('🚐', req.pitchTypes?.join(', '), 'Fahrzeug')}
       ${detailRow('👥', [req.adults ? `${req.adults} Erw.` : '', req.children ? `${req.children} Kinder` : ''].filter(Boolean).join(', '))}
       ${req.message ? detailRow('💬', req.message, 'Nachricht') : ''}
@@ -305,8 +319,8 @@ const renderGuestCard = (guest) => `
       </div>
     </button>
     <div class="card-body">
-      ${detailRow('📧', guest.email)}
-      ${detailRow('📞', guest.phone)}
+      ${emailRow(guest.email)}
+      ${phoneRow(guest.phone)}
       ${detailRow('🚐', guest.pitchTypes, 'Fahrzeug')}
       ${detailRow('👥', [guest.adults ? `${guest.adults} Erw.` : '', guest.children ? `${guest.children} Kinder` : ''].filter(Boolean).join(', '))}
       ${guest.childrenAge ? detailRow('🎒', guest.childrenAge, 'Alter Kinder') : ''}
