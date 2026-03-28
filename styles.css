@@ -73,6 +73,25 @@ img { display: block; max-width: 100%; }
     var(--bg);
 }
 
+.install-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--forest);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.15);
+}
+.install-banner span { flex: 1; }
+.install-banner.hidden { display: none; }
+
 .login-card {
   width: 100%;
   max-width: 380px;
