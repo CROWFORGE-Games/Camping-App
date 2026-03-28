@@ -285,6 +285,9 @@ const renderIncomingCard = (req) => `
       <button class="btn btn-primary btn-full checkin-from-booking-btn" data-id="${escHtml(req.id)}">
         ✓ Jetzt einchecken
       </button>
+      <button class="btn btn-danger btn-sm incoming-delete-btn" data-id="${escHtml(req.id)}" style="margin-top:0.5rem;width:100%">
+        Löschen
+      </button>
     </div>
   </div>
 `;
@@ -482,6 +485,25 @@ const bindCampingEvents = () => {
         await api(`/api/app/guests/${id}`, { method: 'DELETE' });
         state.guests = state.guests.filter(g => g.id !== id);
         showToast('Gast gelöscht', 'success');
+        renderCampingTab();
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // Ankommende Anfrage löschen (bei Absage vor Anreise)
+  document.querySelectorAll('.incoming-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Ankommenden Gast wirklich löschen?')) return;
+      const id = btn.dataset.id;
+      btn.disabled = true;
+      try {
+        await api(`/api/app/requests/${id}`, { method: 'DELETE' });
+        state.requests = state.requests.filter(r => r.id !== id);
+        showToast('Gelöscht', 'success');
         renderCampingTab();
       } catch (err) {
         showToast(err.message, 'error');
