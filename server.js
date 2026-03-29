@@ -47,8 +47,12 @@ let storeCache = null;
 
 const defaultStore = () => ({
   users: [],
-  guests: [],
-  requests: [],
+  gasGuests: [],     // von GAS gecacht
+  gasRequests: [],   // von GAS gecacht
+  guests: [],        // lokal hinzugefügt (GAS deaktiviert)
+  requests: [],      // lokal hinzugefügt (GAS deaktiviert)
+  pitchConfig: null, // Stellplatz-Zonen von GAS (JSON)
+  lastGasSync: null, // ISO-Timestamp letzter erfolgreicher GAS-Sync
   settings: {
     bookingRecipientEmail: '',
     bookingPhone: '+43 664 885 305 24',
@@ -84,13 +88,21 @@ const writeStore = (store) => {
 
 // ─── Default-Stellplätze ──────────────────────────────────────────────────────
 
+const FALLBACK_PITCH_ZONES = [
+  { zone: 'wiese1', label: 'Wiese 1', start: 1, end: 12 },
+  { zone: 'wiese2', label: 'Wiese 2', start: 1, end: 11 },
+  { zone: 'wiese3', label: 'Wiese 3', start: 12, end: 18 },
+  { zone: 'see',    label: 'Seeplatz', start: 1, end: 26 },
+];
+
+const getPitchZones = () => {
+  const store = loadStore();
+  if (Array.isArray(store.pitchConfig) && store.pitchConfig.length > 0) return store.pitchConfig;
+  return FALLBACK_PITCH_ZONES;
+};
+
 const defaultPitches = () => {
-  const zones = [
-    { zone: 'wiese1', label: 'Wiese 1', start: 1, end: 12 },
-    { zone: 'wiese2', label: 'Wiese 2', start: 1, end: 11 },
-    { zone: 'wiese3', label: 'Wiese 3', start: 12, end: 18 },
-    { zone: 'see', label: 'Seeplatz', start: 1, end: 26 },
-  ];
+  const zones = getPitchZones();
   return zones.flatMap(({ zone, label, start, end }) =>
     Array.from({ length: end - start + 1 }, (_, i) => ({
       id: `${zone}-${start + i}`,
@@ -99,6 +111,52 @@ const defaultPitches = () => {
       number: start + i,
     }))
   );
+};
+
+// ─── Hintergrund-GAS-Sync ────────────────────────────────────────────────────
+
+const syncState = { syncing: false, lastSync: null, error: null };
+
+const runBackgroundGasSync = () => {
+  if (syncState.syncing) return;
+  if (!GAS_ENABLED || !GAS_URL) return;
+  syncState.syncing = true;
+  syncState.error = null;
+
+  (async () => {
+    try {
+      invalidateGasCache('camping', 'inquiries', 'settings');
+      const [guestsRaw, requestsRaw] = await Promise.all([
+        getGuestsFromGAS(),
+        getRequestsFromGAS(),
+      ]);
+      const store = loadStore();
+      if (guestsRaw)   store.gasGuests   = guestsRaw;
+      if (requestsRaw) store.gasRequests = requestsRaw;
+
+      // Stellplatz-Konfiguration aus Einstellungen laden
+      // Erwartet: Zeile mit key="pitchConfig", value=JSON-Array der Zonen
+      try {
+        const settingsData = await gasGet('settings', { sheetName: 'Einstellungen' });
+        if (Array.isArray(settingsData?.rows)) {
+          const cfgRow = settingsData.rows.find(r => String(r.key || '').trim() === 'pitchConfig');
+          if (cfgRow?.value) {
+            const parsed = JSON.parse(String(cfgRow.value));
+            if (Array.isArray(parsed) && parsed.length > 0) store.pitchConfig = parsed;
+          }
+        }
+      } catch { /* pitchConfig optional */ }
+
+      store.lastGasSync = new Date().toISOString();
+      writeStore(store);
+      syncState.lastSync = store.lastGasSync;
+    } catch (err) {
+      syncState.error = err.message;
+      console.error('Hintergrund-GAS-Sync fehlgeschlagen:', err.message);
+    } finally {
+      syncState.syncing = false;
+    }
+  })();
 };
 
 // ─── Datums-Hilfsfunktionen ───────────────────────────────────────────────────
@@ -471,58 +529,64 @@ app.post('/api/auth/logout', (_req, res) => res.json({ ok: true }));
 
 // ─── App-Routen ───────────────────────────────────────────────────────────────
 
-app.get('/api/app/bootstrap', requireAuth, async (req, res) => {
+app.get('/api/app/bootstrap', requireAuth, (req, res) => {
   try {
     const store = loadStore();
-    const [guestsRaw, requestsRaw] = await Promise.all([getGuestsFromGAS(), getRequestsFromGAS()]);
-
-    const gasGuests = guestsRaw ?? [];
-    const gasRequests = requestsRaw ?? [];
-    const guests = [...gasGuests, ...(store.guests || [])];
-    const requests = [...gasRequests, ...(store.requests || [])].filter(r => r.type === 'booking');
-
-    const today = todayString();
-    const pitches = computePitches(guests, requests, today);
+    // Sofort aus Cache antworten (keine GAS-Wartezeit)
+    const guests   = [...(store.gasGuests || []), ...(store.guests || [])];
+    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type === 'booking');
+    const today    = todayString();
+    const pitches  = computePitches(guests, requests, today);
     const weekData = computeWeekData(guests, requests, today);
 
     res.json({
-      guests,
-      requests,
-      pitches,
-      weekData,
+      guests, requests, pitches, weekData,
       weekFrom: today,
       settings: store.settings,
       gasEnabled: GAS_ENABLED && Boolean(GAS_URL),
       resendConfigured: isResendConfigured(),
+      sync: {
+        syncing:  syncState.syncing,
+        lastSync: store.lastGasSync,
+        error:    syncState.error,
+      },
     });
+
+    // GAS-Sync im Hintergrund anstoßen (nach Response)
+    setImmediate(runBackgroundGasSync);
   } catch (err) {
     console.error('Bootstrap-Fehler:', err);
     res.status(500).json({ error: 'Daten konnten nicht geladen werden.' });
   }
 });
 
-app.get('/api/app/pitches', requireAuth, async (req, res) => {
+app.get('/api/app/sync-status', requireAuth, (_req, res) => {
+  const store = loadStore();
+  res.json({ syncing: syncState.syncing, lastSync: store.lastGasSync, error: syncState.error });
+});
+
+app.get('/api/app/pitches', requireAuth, (req, res) => {
   try {
     const refDate = normalizeDateOnly(req.query.date) || todayString();
-    const store = loadStore();
-    const [guestsRaw, requestsRaw] = await Promise.all([getGuestsFromGAS(), getRequestsFromGAS()]);
-    const guests = [...(guestsRaw ?? []), ...(store.guests || [])];
-    const requests = [...(requestsRaw ?? []), ...(store.requests || [])].filter(r => r.type === 'booking');
-    res.json({ pitches: computePitches(guests, requests, refDate) });
+    const store   = loadStore();
+    const guests   = [...(store.gasGuests || []), ...(store.guests || [])];
+    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type === 'booking');
+    res.json({
+      pitches: computePitches(guests, requests, refDate),
+      sync: { syncing: syncState.syncing, lastSync: store.lastGasSync },
+    });
   } catch (err) {
     res.status(500).json({ error: 'Stellplatzdaten konnten nicht geladen werden.' });
   }
 });
 
-app.get('/api/app/week', requireAuth, async (req, res) => {
+app.get('/api/app/week', requireAuth, (req, res) => {
   try {
     const fromDate = normalizeDateOnly(req.query.from) || todayString();
-    const store = loadStore();
-    const [guestsRaw, requestsRaw] = await Promise.all([getGuestsFromGAS(), getRequestsFromGAS()]);
-    const guests = [...(guestsRaw ?? []), ...(store.guests || [])];
-    const requests = [...(requestsRaw ?? []), ...(store.requests || [])].filter(r => r.type === 'booking');
-    const weekData = computeWeekData(guests, requests, fromDate);
-    res.json({ weekData, weekFrom: fromDate });
+    const store    = loadStore();
+    const guests   = [...(store.gasGuests || []), ...(store.guests || [])];
+    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type === 'booking');
+    res.json({ weekData: computeWeekData(guests, requests, fromDate), weekFrom: fromDate });
   } catch (err) {
     res.status(500).json({ error: 'Wochendaten konnten nicht geladen werden.' });
   }
@@ -580,70 +644,110 @@ app.post('/api/app/guests', requireAuth, async (req, res) => {
   }
 });
 
-// Gast aktualisieren (Bezahlt-Status, Bemerkungen)
-app.patch('/api/app/guests/:id', requireAuth, async (req, res) => {
+// Gast aktualisieren (Bezahlt-Status, Bemerkungen) – optimistisch
+app.patch('/api/app/guests/:id', requireAuth, (req, res) => {
   try {
-    const { id } = req.params;
+    const { id }  = req.params;
     const updates = req.body || {};
+    const store   = loadStore();
 
-    if (GAS_ENABLED && GAS_URL) {
-      await gasPost('updateCamping', {
-        sheetName: GAS_CAMPING_SHEET,
-        id,
-        updates: {
-          ...(updates.paid !== undefined && { paid: String(Boolean(updates.paid)) }),
-          ...(updates.notes !== undefined && { notes: String(updates.notes) }),
-        },
-      });
-      invalidateGasCache('camping');
+    // 1. Sofort im lokalen Cache aktualisieren
+    const gasIdx = (store.gasGuests || []).findIndex(g => g.id === id);
+    if (gasIdx !== -1) {
+      store.gasGuests[gasIdx] = { ...store.gasGuests[gasIdx], ...updates };
     } else {
-      const store = loadStore();
-      const idx = (store.guests || []).findIndex(g => g.id === id);
-      if (idx !== -1) { store.guests[idx] = { ...store.guests[idx], ...updates }; writeStore(store); }
+      const localIdx = (store.guests || []).findIndex(g => g.id === id);
+      if (localIdx !== -1) store.guests[localIdx] = { ...store.guests[localIdx], ...updates };
     }
+    writeStore(store);
 
+    // 2. Sofort antworten
     res.json({ ok: true });
+
+    // 3. Im Hintergrund zu GAS syncen
+    if (GAS_ENABLED && GAS_URL) {
+      setImmediate(async () => {
+        try {
+          await gasPost('updateCamping', {
+            sheetName: GAS_CAMPING_SHEET, id,
+            updates: {
+              ...(updates.paid  !== undefined && { paid:  String(Boolean(updates.paid)) }),
+              ...(updates.notes !== undefined && { notes: String(updates.notes) }),
+            },
+          });
+          invalidateGasCache('camping');
+        } catch (err) {
+          console.error('Hintergrund-Update (Gast) fehlgeschlagen:', err.message);
+        }
+      });
+    }
   } catch (err) {
     console.error('Gast-Update Fehler:', err);
     res.status(500).json({ error: err.message || 'Fehler beim Aktualisieren.' });
   }
 });
 
-// Gast auschecken
-app.delete('/api/app/guests/:id', requireAuth, async (req, res) => {
+// Gast auschecken – optimistisch
+app.delete('/api/app/guests/:id', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
+    const store  = loadStore();
 
-    if (GAS_ENABLED && GAS_URL) {
-      await gasPost('deleteCamping', { sheetName: GAS_CAMPING_SHEET, id });
-      invalidateGasCache('camping', 'spots');
-    } else {
-      const store = loadStore();
-      store.guests = (store.guests || []).filter(g => g.id !== id);
-      writeStore(store);
-    }
+    // 1. Sofort aus Cache entfernen
+    store.gasGuests = (store.gasGuests || []).filter(g => g.id !== id);
+    store.guests    = (store.guests    || []).filter(g => g.id !== id);
+    writeStore(store);
 
+    // 2. Sofort antworten
     res.json({ ok: true });
+
+    // 3. Im Hintergrund zu GAS syncen
+    if (GAS_ENABLED && GAS_URL) {
+      setImmediate(async () => {
+        try {
+          await gasPost('deleteCamping', { sheetName: GAS_CAMPING_SHEET, id });
+          invalidateGasCache('camping', 'spots');
+        } catch (err) {
+          console.error('Hintergrund-Delete (Gast) fehlgeschlagen:', err.message);
+        }
+      });
+    }
   } catch (err) {
     console.error('Check-out Fehler:', err);
     res.status(500).json({ error: err.message || 'Fehler beim Auschecken.' });
   }
 });
 
-// Anfrage-Status setzen
-app.patch('/api/app/requests/:id/status', requireAuth, async (req, res) => {
+// Anfrage-Status setzen – optimistisch
+app.patch('/api/app/requests/:id/status', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body || {};
     const valid = ['new', 'confirmed', 'cancelled', 'done'];
     if (!valid.includes(status)) return res.status(400).json({ error: 'Ungültiger Status.' });
 
-    if (GAS_ENABLED && GAS_URL) {
-      await gasPost('updateInquiryStatus', { sheetName: GAS_ANFRAGEN_SHEET, id, status });
-      invalidateGasCache('inquiries');
-    }
+    // 1. Sofort im Cache aktualisieren
+    const store = loadStore();
+    const gasIdx = (store.gasRequests || []).findIndex(r => r.id === id);
+    if (gasIdx !== -1) store.gasRequests[gasIdx] = { ...store.gasRequests[gasIdx], status };
+    const localIdx = (store.requests || []).findIndex(r => r.id === id);
+    if (localIdx !== -1) store.requests[localIdx] = { ...store.requests[localIdx], status };
+    writeStore(store);
 
+    // 2. Sofort antworten
     res.json({ ok: true });
+
+    // 3. Im Hintergrund zu GAS syncen
+    if (GAS_ENABLED && GAS_URL) {
+      setImmediate(async () => {
+        try {
+          await gasPost('updateInquiryStatus', { sheetName: GAS_ANFRAGEN_SHEET, id, status });
+          invalidateGasCache('inquiries');
+        } catch (err) {
+          console.error('Hintergrund-Update (Anfrage-Status) fehlgeschlagen:', err.message);
+        }
+      });
+    }
   } catch (err) {
     console.error('Status-Update Fehler:', err);
     res.status(500).json({ error: err.message || 'Fehler beim Status-Update.' });
@@ -674,8 +778,11 @@ app.post('/api/app/requests/:id/reply', requireAuth, async (req, res) => {
         invalidateGasCache('inquiries');
       }
       const store = loadStore();
-      const idx = (store.requests || []).findIndex(r => r.id === id);
-      if (idx >= 0) { store.requests[idx].status = newStatus; saveStore(store); }
+      const gasIdx2 = (store.gasRequests || []).findIndex(r => r.id === id);
+      if (gasIdx2 >= 0) store.gasRequests[gasIdx2] = { ...store.gasRequests[gasIdx2], status: newStatus };
+      const localIdx2 = (store.requests || []).findIndex(r => r.id === id);
+      if (localIdx2 >= 0) store.requests[localIdx2] = { ...store.requests[localIdx2], status: newStatus };
+      writeStore(store);
     }
 
     res.json({ ok: true });
@@ -693,7 +800,7 @@ app.patch('/api/app/settings', requireAuth, async (req, res) => {
     if (senderName !== undefined) store.settings.senderName = String(senderName).trim();
     if (bookingRecipientEmail !== undefined) store.settings.bookingRecipientEmail = String(bookingRecipientEmail).trim();
     if (bookingPhone !== undefined) store.settings.bookingPhone = String(bookingPhone).trim();
-    saveStore(store);
+    writeStore(store);
     storeCache = null;
     res.json({ ok: true, settings: store.settings });
   } catch (err) {
@@ -713,7 +820,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
     const valid = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!valid) return res.status(401).json({ error: 'Aktuelles Passwort falsch.' });
     user.passwordHash = await bcrypt.hash(newPassword, 12);
-    saveStore(store);
+    writeStore(store);
     storeCache = null;
     res.json({ ok: true });
   } catch (err) {
@@ -731,7 +838,7 @@ app.delete('/api/app/requests/:id', requireAuth, async (req, res) => {
     }
     const store = loadStore();
     store.requests = (store.requests || []).filter(r => r.id !== id);
-    saveStore(store);
+    writeStore(store);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Fehler beim Löschen.' });

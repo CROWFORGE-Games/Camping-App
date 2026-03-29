@@ -171,6 +171,18 @@ img { display: block; max-width: 100%; }
   line-height: 1.2;
 }
 
+/* ─── Sync-Dot ───────────────────────────────────────────────────────────── */
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--forest);
+  border-top-color: transparent;
+  animation: syncSpin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes syncSpin { to { transform: rotate(360deg); } }
+
 .btn-icon {
   width: 36px;
   height: 36px;

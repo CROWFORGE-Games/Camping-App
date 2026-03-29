@@ -15,6 +15,9 @@ const state = {
   gasEnabled: false,
   resendConfigured: false,
   guestSearch: '',
+  syncing: false,
+  lastSync: null,
+  syncError: null,
 };
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -101,6 +104,46 @@ const setLoading = (on) => {
   document.getElementById('loading-overlay').classList.toggle('hidden', !on);
 };
 
+// ─── Sync-Indicator ───────────────────────────────────────────────────────────
+
+const updateSyncIndicator = () => {
+  const dot = document.getElementById('sync-dot');
+  if (!dot) return;
+  dot.classList.toggle('hidden', !state.syncing);
+};
+
+let _syncPollTimer = null;
+
+const pollSyncStatus = () => {
+  if (_syncPollTimer) return; // bereits läuft
+  const check = async () => {
+    try {
+      const data = await api('/api/app/sync-status');
+      state.syncing  = Boolean(data.syncing);
+      state.lastSync = data.lastSync || null;
+      state.syncError = data.error || null;
+      updateSyncIndicator();
+      if (data.syncing) {
+        _syncPollTimer = setTimeout(check, 1500);
+      } else {
+        _syncPollTimer = null;
+        // Frische Daten im Hintergrund nachladen
+        try {
+          const fresh = await api('/api/app/bootstrap');
+          applyBootstrapData(fresh, { resetDay: false });
+          renderActiveTab();
+          updateRequestsBadge();
+        } catch { /* ignorieren */ }
+      }
+    } catch {
+      _syncPollTimer = null;
+      state.syncing = false;
+      updateSyncIndicator();
+    }
+  };
+  _syncPollTimer = setTimeout(check, 1200);
+};
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 const login = async (email, password) => {
@@ -126,17 +169,26 @@ const checkSession = async () => {
 
 // ─── Daten laden ──────────────────────────────────────────────────────────────
 
+const applyBootstrapData = (data, { resetDay = false } = {}) => {
+  state.guests          = data.guests   || [];
+  state.requests        = data.requests || [];
+  state.pitches         = data.pitches  || [];
+  state.weekData        = data.weekData || [];
+  state.weekFrom        = data.weekFrom || todayStr();
+  if (resetDay) state.selectedWeekDay = todayStr();
+  state.settings        = data.settings || {};
+  state.gasEnabled      = Boolean(data.gasEnabled);
+  state.resendConfigured = Boolean(data.resendConfigured);
+  state.syncing         = Boolean(data.sync?.syncing);
+  state.lastSync        = data.sync?.lastSync ?? null;
+  state.syncError       = data.sync?.error    ?? null;
+};
+
 const loadBootstrap = async () => {
   const data = await api('/api/app/bootstrap');
-  state.guests = data.guests || [];
-  state.requests = data.requests || [];
-  state.pitches = data.pitches || [];
-  state.weekData = data.weekData || [];
-  state.weekFrom = data.weekFrom || todayStr();
-  state.selectedWeekDay = todayStr();
-  state.settings = data.settings || {};
-  state.gasEnabled = Boolean(data.gasEnabled);
-  state.resendConfigured = Boolean(data.resendConfigured);
+  applyBootstrapData(data, { resetDay: true });
+  updateSyncIndicator();
+  if (state.syncing) pollSyncStatus();
 };
 
 const loadWeek = async (fromDate) => {
@@ -146,8 +198,12 @@ const loadWeek = async (fromDate) => {
 };
 
 const refreshAll = async () => {
-  await loadBootstrap();
+  const data = await api('/api/app/bootstrap');
+  applyBootstrapData(data, { resetDay: false }); // Tab + Tagauswahl beibehalten
+  updateSyncIndicator();
+  if (state.syncing) pollSyncStatus();
   renderActiveTab();
+  updateRequestsBadge();
 };
 
 // ─── Tab-Navigation ───────────────────────────────────────────────────────────
@@ -427,33 +483,40 @@ const bindCampingEvents = () => {
     });
   });
 
-  // Bezahlt-Toggle
+  // Bezahlt-Toggle (optimistisch: sofort UI + State, GAS im Hintergrund)
   document.querySelectorAll('.paid-toggle-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+    btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const id = btn.dataset.id;
+      const id   = btn.dataset.id;
       const paid = btn.dataset.paid !== 'true';
+
+      // 1. Toggle-Button sofort aktualisieren
       btn.classList.toggle('is-on', paid);
       btn.dataset.paid = String(paid);
       btn.setAttribute('aria-pressed', String(paid));
-      // Badge in derselben Karte aktualisieren
+
+      // 2. Guest-Dot in der Karte sofort aktualisieren
       const card = btn.closest('.card');
-      const badge = card.querySelector('.badge');
-      if (badge) {
-        badge.className = `badge badge-${paid ? 'paid' : 'unpaid'}`;
-        badge.textContent = paid ? 'Bezahlt' : 'Offen';
+      const dot  = card?.querySelector('.guest-dot');
+      if (dot) {
+        dot.className = `guest-dot ${paid ? 'guest-dot-paid' : 'guest-dot-unpaid'}`;
       }
-      try {
-        await api(`/api/app/guests/${id}`, { method: 'PATCH', body: JSON.stringify({ paid }) });
-        const guest = state.guests.find(g => g.id === id);
-        if (guest) guest.paid = paid;
-        showToast(paid ? 'Als bezahlt markiert' : 'Als offen markiert', 'success');
-      } catch (err) {
-        showToast(err.message, 'error');
-        // Zurücksetzen
-        btn.classList.toggle('is-on', !paid);
-        btn.dataset.paid = String(!paid);
-      }
+
+      // 3. State sofort aktualisieren
+      const guest = state.guests.find(g => g.id === id);
+      if (guest) guest.paid = paid;
+
+      // 4. Im Hintergrund zu Server syncen
+      api(`/api/app/guests/${id}`, { method: 'PATCH', body: JSON.stringify({ paid }) })
+        .then(() => showToast(paid ? 'Als bezahlt markiert' : 'Als offen markiert', 'success'))
+        .catch(err => {
+          // Zurücksetzen bei Fehler
+          btn.classList.toggle('is-on', !paid);
+          btn.dataset.paid = String(!paid);
+          if (dot) dot.className = `guest-dot ${!paid ? 'guest-dot-paid' : 'guest-dot-unpaid'}`;
+          if (guest) guest.paid = !paid;
+          showToast(err.message, 'error');
+        });
     });
   });
 
