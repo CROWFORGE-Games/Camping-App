@@ -967,7 +967,8 @@ const bindRequestEvents = () => {
 
 // ─── MODAL: EINSTELLUNGEN ─────────────────────────────────────────────────────
 
-const openSettingsModal = () => {
+const openSettingsModal = async () => {
+  // Sofort mit gecachten Werten öffnen
   const s = state.settings || {};
   document.getElementById('set-sender-name').value = s.senderName || '';
   document.getElementById('set-cc').value           = s.cc || '';
@@ -976,6 +977,19 @@ const openSettingsModal = () => {
   document.getElementById('pw-form').reset();
   document.getElementById('pw-current').classList.remove('input-error');
   document.getElementById('settings-overlay').classList.remove('hidden');
+
+  // Frische GAS-Werte im Hintergrund nachladen
+  try {
+    const data = await api('/api/app/bootstrap');
+    if (data.settings) {
+      state.settings = data.settings;
+      // Nur aktualisieren wenn Modal noch offen ist
+      if (!document.getElementById('settings-overlay').classList.contains('hidden')) {
+        document.getElementById('set-sender-name').value = data.settings.senderName || '';
+        document.getElementById('set-cc').value           = data.settings.cc || '';
+      }
+    }
+  } catch { /* gecachte Werte bleiben */ }
 };
 
 const closeSettingsModal = () => {
