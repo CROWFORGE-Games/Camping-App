@@ -1155,6 +1155,21 @@ const boot = async () => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
+  document.getElementById('refresh-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('refresh-btn');
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+    try {
+      await refreshAll();
+      showToast('Aktualisiert', 'success');
+    } catch {
+      showToast('Aktualisierung fehlgeschlagen', 'error');
+    } finally {
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+    }
+  });
+
   requestAnimationFrame(updateNavIndicator);
   window.addEventListener('resize', updateNavIndicator);
 
