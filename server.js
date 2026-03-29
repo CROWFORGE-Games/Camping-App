@@ -828,16 +828,26 @@ app.post('/api/app/requests/:id/reply', requireAuth, async (req, res) => {
 
     if (action === 'confirm' || action === 'cancel') {
       const newStatus = action === 'confirm' ? 'confirmed' : 'cancelled';
-      if (GAS_ENABLED && GAS_URL) {
-        await gasPost('updateInquiryStatus', { sheetName: GAS_ANFRAGEN_SHEET, id, status: newStatus });
-        invalidateGasCache('inquiries');
-      }
+
+      // 1. Sofort lokal aktualisieren (optimistisch) – unabhängig vom GAS-Ergebnis
       const store = loadStore();
       const gasIdx2 = (store.gasRequests || []).findIndex(r => r.id === id);
       if (gasIdx2 >= 0) store.gasRequests[gasIdx2] = { ...store.gasRequests[gasIdx2], status: newStatus };
       const localIdx2 = (store.requests || []).findIndex(r => r.id === id);
       if (localIdx2 >= 0) store.requests[localIdx2] = { ...store.requests[localIdx2], status: newStatus };
       writeStore(store);
+
+      // 2. GAS-Update im Hintergrund (fire-and-forget) – blockiert keine Response
+      if (GAS_ENABLED && GAS_URL) {
+        setImmediate(async () => {
+          try {
+            await gasPost('updateInquiryStatus', { sheetName: GAS_ANFRAGEN_SHEET, id, status: newStatus });
+            invalidateGasCache('inquiries');
+          } catch (err) {
+            console.error('Hintergrund-Update (Anfrage-Status via Reply) fehlgeschlagen:', err.message);
+          }
+        });
+      }
     }
 
     res.json({ ok: true });
