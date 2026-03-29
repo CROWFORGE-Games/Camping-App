@@ -405,10 +405,13 @@ const computePitches = (guests, requests, refDate) => {
     const futureList = futureMap.get(key) || [];
     const nextBooking = futureList[0] || null;
     if (occupiedMap.has(key)) {
-      // Nur als besetzt markieren wenn tatsächlich eingecheckt
+      // Eingecheckt → Belegt
       return { ...pitch, status: 'occupied', currentGuest: occupiedMap.get(key), nextBooking };
+    } else if (nextBooking && normalizeDateOnly(nextBooking.arrival) === refDate) {
+      // Anreisetag, noch nicht eingecheckt → Reserviert
+      return { ...pitch, status: 'reserved', currentGuest: null, nextBooking };
     } else {
-      // Zukünftige Reservierungen = trotzdem frei (nur nextBooking für "Frei bis"-Anzeige)
+      // Anreise in der Zukunft oder keine Buchung → Frei (nextBooking für "Frei bis"-Anzeige)
       return { ...pitch, status: 'free', currentGuest: null, nextBooking };
     }
   });

@@ -659,10 +659,12 @@ const renderZoneGroup = (zone) => {
   const isOpen = state.openZones?.has(zone) ?? false;
 
   const free     = pitches.filter(p => p.status === 'free').length;
+  const reserved = pitches.filter(p => p.status === 'reserved').length;
   const occupied = pitches.filter(p => p.status === 'occupied').length;
 
   const countDots = `
     <span class="zone-count ${free === 0 ? 'is-zero' : ''}"><span class="status-dot free"></span>${free} frei</span>
+    ${reserved > 0 ? `<span class="zone-count"><span class="status-dot reserved"></span>${reserved} res.</span>` : ''}
     <span class="zone-count ${occupied === 0 ? 'is-zero' : ''}"><span class="status-dot occupied"></span>${occupied} bel.</span>
   `;
 
@@ -690,9 +692,11 @@ const renderPitchRow = (pitch) => {
       <span class="pitch-row-number">Nr. ${escHtml(String(pitch.number))}</span>
       ${guestName
         ? `<span class="pitch-row-guest">${escHtml(guestName)}</span>${departure ? `<span class="pitch-row-until">bis ${escHtml(fmtDate(departure))}</span>` : ''}`
-        : pitch.nextBooking
-          ? `<span class="pitch-row-free">Frei</span><span class="pitch-row-until">frei bis ${escHtml(fmtDate(pitch.nextBooking.arrival))}</span>`
-          : `<span class="pitch-row-free">Frei</span>`
+        : pitch.status === 'reserved'
+          ? `<span class="pitch-row-guest">${escHtml(pitch.nextBooking?.name || 'Reserviert')}</span><span class="pitch-row-until">ab heute</span>`
+          : pitch.nextBooking
+            ? `<span class="pitch-row-free">Frei</span><span class="pitch-row-until">frei bis ${escHtml(fmtDate(pitch.nextBooking.arrival))}</span>`
+            : `<span class="pitch-row-free">Frei</span>`
       }
     </div>
   `;
