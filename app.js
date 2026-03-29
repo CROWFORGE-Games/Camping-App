@@ -160,7 +160,13 @@ const switchTab = (tab) => {
     btn.setAttribute('aria-selected', String(isActive));
   });
   document.querySelectorAll('.tab-panel').forEach(panel => {
-    panel.classList.toggle('hidden', panel.id !== `tab-${tab}`);
+    const isActive = panel.id === `tab-${tab}`;
+    panel.classList.toggle('hidden', !isActive);
+    if (isActive) {
+      panel.classList.remove('tab-fade-in');
+      void panel.offsetWidth; // force reflow
+      panel.classList.add('tab-fade-in');
+    }
   });
   updateNavIndicator();
   renderActiveTab();
@@ -232,19 +238,19 @@ const renderCampingTab = () => {
     ${!state.gasEnabled ? `<p class="gas-warning">⚠️ Google Sheets nicht verbunden – lokaler Modus</p>` : ''}
 
     <div class="stat-row">
-      <div class="stat-card">
+      <div class="stat-card stat-card-green">
         <span class="stat-value">${allGuests.length}</span>
         <span class="stat-label">Gäste aktiv</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card stat-card-blue">
         <span class="stat-value">${arrivalsToday}</span>
         <span class="stat-label">Ankünfte heute</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card stat-card-orange">
         <span class="stat-value">${departuresToday}</span>
         <span class="stat-label">Abreisen heute</span>
       </div>
-      <div class="stat-card">
+      <div class="stat-card stat-card-neutral">
         <span class="stat-value">${occupancyPct}${typeof occupancyPct === 'number' ? '%' : ''}</span>
         <span class="stat-label">Auslastung</span>
       </div>
@@ -268,7 +274,7 @@ const renderCampingTab = () => {
         value="${escHtml(search)}" autocomplete="off" />
     </div>
     ${guests.length === 0
-      ? `<div class="empty-state"><div class="empty-state-icon">⛺</div><p>${search ? 'Keine Treffer.' : 'Keine Gäste eingecheckt.'}</p></div>`
+      ? `<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l9-18 9 18"/><path d="M7 21v-4a2 2 0 012-2h6a2 2 0 012 2v4"/><path d="M12 3v3"/></svg></div><p>${search ? 'Keine Treffer.' : 'Keine Gäste eingecheckt.'}</p></div>`
       : `<div id="guests-list">${guests.map(g => renderGuestCard(g)).join('')}</div>`
     }
   `;
@@ -310,11 +316,13 @@ const renderGuestCard = (guest) => `
   <div class="card" data-id="${escHtml(guest.id)}">
     <button class="card-trigger" data-toggle="${escHtml(guest.id)}">
       <div class="card-trigger-main">
-        <span class="card-name">${escHtml(guest.name)}</span>
+        <div class="card-name-wrap">
+          <span class="guest-dot ${guest.paid ? 'guest-dot-paid' : 'guest-dot-unpaid'}"></span>
+          <span class="card-name">${escHtml(guest.name)}</span>
+        </div>
         <span class="card-sub">${escHtml(guest.stellplatz)} ${escHtml(String(guest.stellplatznummer))} · ${fmtDate(guest.arrival)} – ${fmtDate(guest.departure)}</span>
       </div>
       <div class="card-trigger-end">
-        ${guest.paid ? badgeHtml('Bezahlt', 'paid') : badgeHtml('Offen', 'unpaid')}
         <span class="card-chevron">▼</span>
       </div>
     </button>
@@ -721,7 +729,7 @@ const renderRequestsTab = () => {
     </div>
 
     ${filtered.length === 0
-      ? `<div class="empty-state"><div class="empty-state-icon">📋</div><p>Keine Anfragen.</p></div>`
+      ? `<div class="empty-state"><div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 7h6M9 11h6M9 15h4"/></svg></div><p>Keine Anfragen.</p></div>`
       : `<div id="requests-list" style="display:flex;flex-direction:column;gap:0.5rem">${filtered.map(r => renderRequestCard(r)).join('')}</div>`
     }
   `;
@@ -741,7 +749,7 @@ const renderRequestCard = (req) => {
   const dis = !state.resendConfigured ? 'disabled title="Resend nicht konfiguriert"' : '';
 
   return `
-    <div class="req-card" data-id="${escHtml(req.id)}">
+    <div class="req-card req-card-${escHtml(req.status || 'new')}" data-id="${escHtml(req.id)}">
       <div class="req-card-top">
         <div class="req-card-info">
           <span class="req-name">${escHtml(req.name)}</span>
