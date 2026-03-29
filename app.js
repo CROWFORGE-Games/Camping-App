@@ -18,6 +18,7 @@ const state = {
   syncing: false,
   lastSync: null,
   syncError: null,
+  today: null,  // Server-seitiges "heute" (Europe/Vienna) – verhindert TZ-Mismatch
 };
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -137,6 +138,7 @@ const pollSyncStatus = (force = false) => {
           state.pitches  = fresh.pitches  || [];
           state.weekData = fresh.weekData || [];
           state.weekFrom = fresh.weekFrom || todayStr();
+          state.today    = fresh.today    || todayStr();
           state.settings = fresh.settings || {};
           renderActiveTab();
           updateRequestsBadge();
@@ -182,7 +184,8 @@ const applyBootstrapData = (data, { resetDay = false } = {}) => {
   state.pitches         = data.pitches  || [];
   state.weekData        = data.weekData || [];
   state.weekFrom        = data.weekFrom || todayStr();
-  if (resetDay) state.selectedWeekDay = todayStr();
+  state.today           = data.today    || todayStr(); // Server-Datum (Vienna-TZ)
+  if (resetDay) state.selectedWeekDay = state.today;
   state.settings        = data.settings || {};
   state.gasEnabled      = Boolean(data.gasEnabled);
   state.resendConfigured = Boolean(data.resendConfigured);
@@ -208,7 +211,7 @@ const refreshAll = async () => {
   const data = await api('/api/app/bootstrap');
   applyBootstrapData(data, { resetDay: false }); // Tab + Tagauswahl beibehalten
   updateSyncIndicator();
-  pollSyncStatus(true); // immer neu starten – Server läuft Sync sowieso
+  if (state.syncing) pollSyncStatus(true); // nur pollen wenn Sync tatsächlich gestartet
   renderActiveTab();
   updateRequestsBadge();
 };
@@ -276,7 +279,7 @@ const phoneRow = (phone) => phone
 
 const renderCampingTab = () => {
   const panel = document.getElementById('tab-camping');
-  const today = todayStr();
+  const today = state.today || todayStr();
   const soon = addDays(today, 7);
 
   const incoming = state.requests.filter(r =>
@@ -469,7 +472,7 @@ const printMeldezettel = (guestId) => {
   const url  = URL.createObjectURL(blob);
   const w    = window.open(url, '_blank');
   if (!w) showToast('Popup blockiert – bitte Popups für diese Seite erlauben', 'error');
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  setTimeout(() => URL.revokeObjectURL(url), 300_000); // 5 Minuten – genug Zeit zum Drucken
 };
 
 const bindCampingEvents = () => {
@@ -562,6 +565,10 @@ const bindCampingEvents = () => {
         state.guests = state.guests.filter(g => g.id !== id);
         showToast('Gast ausgecheckt', 'success');
         renderCampingTab();
+        // Stellplätze im Hintergrund aktualisieren
+        api(`/api/app/pitches?date=${state.selectedWeekDay || state.today || todayStr()}`)
+          .then(d => { state.pitches = d.pitches || []; if (state.activeTab === 'pitches') renderPitchesTab(); })
+          .catch(() => {});
       } catch (err) {
         showToast(err.message, 'error');
         btn.disabled = false;
@@ -581,6 +588,10 @@ const bindCampingEvents = () => {
         state.guests = state.guests.filter(g => g.id !== id);
         showToast('Gast gelöscht', 'success');
         renderCampingTab();
+        // Stellplätze im Hintergrund aktualisieren
+        api(`/api/app/pitches?date=${state.selectedWeekDay || state.today || todayStr()}`)
+          .then(d => { state.pitches = d.pitches || []; if (state.activeTab === 'pitches') renderPitchesTab(); })
+          .catch(() => {});
       } catch (err) {
         showToast(err.message, 'error');
         btn.disabled = false;
@@ -600,6 +611,10 @@ const bindCampingEvents = () => {
         state.requests = state.requests.filter(r => r.id !== id);
         showToast('Gelöscht', 'success');
         renderCampingTab();
+        // Stellplätze im Hintergrund aktualisieren (Reservierung verschwindet)
+        api(`/api/app/pitches?date=${state.selectedWeekDay || state.today || todayStr()}`)
+          .then(d => { state.pitches = d.pitches || []; if (state.activeTab === 'pitches') renderPitchesTab(); })
+          .catch(() => {});
       } catch (err) {
         showToast(err.message, 'error');
         btn.disabled = false;
@@ -634,8 +649,8 @@ const renderPitchesTab = () => {
     <!-- Wochenstreifen -->
     <div class="week-strip">
       ${state.weekData.map(day => `
-        <button class="week-day ${day.date === todayStr() ? 'is-today' : ''} ${day.date === state.selectedWeekDay ? 'is-selected' : ''}"
-          data-date="${escHtml(day.date)}" aria-label="${escHtml(day.dayDate)}, ${day.free ?? (day.occupied)} frei">
+        <button class="week-day ${day.date === (state.today || todayStr()) ? 'is-today' : ''} ${day.date === state.selectedWeekDay ? 'is-selected' : ''}"
+          data-date="${escHtml(day.date)}" aria-label="${escHtml(day.dayDate)}, ${day.free ?? day.occupied} frei">
           <span class="week-day-name">${escHtml(day.dayName)}</span>
           <span class="week-day-date">${escHtml(day.dayDate)}</span>
           <span class="week-day-count">${day.free ?? day.occupied}</span>
@@ -779,7 +794,7 @@ const renderRequestsTab = () => {
 
   const filtered = state.requests.filter(r =>
     state.requestFilter === 'all' ? true : r.status === state.requestFilter
-  ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  ).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   const counts = {
     new: state.requests.filter(r => r.status === 'new').length,
@@ -901,6 +916,10 @@ const bindRequestEvents = () => {
         updateRequestsBadge();
         showToast('Anfrage gelöscht', 'success');
         renderRequestsTab();
+        // Stellplätze aktualisieren (evtl. Reservierung weggefallen)
+        api(`/api/app/pitches?date=${state.selectedWeekDay || state.today || todayStr()}`)
+          .then(d => { state.pitches = d.pitches || []; if (state.activeTab === 'pitches') renderPitchesTab(); })
+          .catch(() => {});
       } catch (err) {
         showToast(err.message, 'error');
         btn.disabled = false;
@@ -1112,7 +1131,7 @@ const openGuestModal = (prefill = null) => {
     form.name.value = prefill.name || '';
     form.email.value = prefill.email || '';
     form.phone.value = prefill.phone || '';
-    form.arrival.value = prefill.arrival || todayStr();
+    form.arrival.value = prefill.arrival || state.today || todayStr();
     form.departure.value = prefill.departure || '';
     form.adults.value = prefill.adults || 1;
     form.children.value = prefill.children || 0;
@@ -1135,7 +1154,7 @@ const openGuestModal = (prefill = null) => {
   } else {
     title.textContent = 'Gast anlegen';
     submitBtn.textContent = 'Einchecken';
-    form.arrival.value = todayStr();
+    form.arrival.value = state.today || todayStr();
   }
 
   overlay.classList.remove('hidden');

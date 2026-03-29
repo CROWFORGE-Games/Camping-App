@@ -181,18 +181,20 @@ const runBackgroundGasSync = () => {
 // ─── Datums-Hilfsfunktionen ───────────────────────────────────────────────────
 
 const todayString = () => {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  // Use Europe/Vienna timezone to avoid UTC off-by-one after midnight Austrian time
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Vienna' });
 };
 
 const normalizeDateOnly = (value) => {
   const raw = String(value || '').trim();
   if (!raw) return '';
-  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (match) return match[1];
+  // ISO format YYYY-MM-DD (most common from GAS)
+  const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoMatch) return isoMatch[1];
+  // German format DD.MM.YYYY (GAS may export this)
+  const deMatch = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+  if (deMatch) return `${deMatch[3]}-${deMatch[2]}-${deMatch[1]}`;
+  // Fallback: let JS parse (e.g. "April 17, 2026")
   const date = new Date(raw);
   if (isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -272,11 +274,19 @@ const gasGet = async (eventType, params = {}) => {
 const gasPost = async (eventType, payload) => {
   if (!GAS_ENABLED || !GAS_URL) return;
 
-  const res = await fetch(GAS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token: GAS_TOKEN || '', eventType, payload }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let res;
+  try {
+    res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: GAS_TOKEN || '', eventType, payload }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.error || `GAS Fehler: ${res.status}`);
 };
@@ -342,7 +352,7 @@ const getRequestsFromGAS = async () => {
       id: String(row.id || '').trim(),
       type: normalizeInquiryType(row.inquiryType),
       status: normalizeInquiryStatus(row.status),
-      createdAt: String(row.createdAt || '').trim(),
+      createdAt: normalizeDateOnly(row.createdAt || '') || String(row.createdAt || '').trim(),
       name: String(row.name || '').trim(),
       email: String(row.email || '').trim(),
       phone: String(row.phone || '').trim(),
@@ -353,7 +363,7 @@ const getRequestsFromGAS = async () => {
       departure: normalizeDateOnly(row.departure || ''),
       preferredPitch: String(row.preferredPitch || '').trim(),
       preferredPitchZone: String(row.preferredPitchZone || '').trim(),
-      preferredPitchNumber: String(row.preferredPitchNumber || '').trim(),
+      preferredPitchNumber: Number(row.preferredPitchNumber || 0),
       pitchTypes: Array.isArray(row.pitchTypes)
         ? row.pitchTypes
         : String(row.pitchTypes || '').split(',').map(s => s.trim()).filter(Boolean),
@@ -391,7 +401,7 @@ const computePitches = (guests, requests, refDate) => {
   for (const r of requests) {
     if (r.status !== 'confirmed' || !r.preferredPitchZone || !r.preferredPitchNumber) continue;
     const arrival = normalizeDateOnly(r.arrival);
-    if (!arrival || arrival <= refDate) continue;
+    if (!arrival || arrival < refDate) continue;
     const key = `${normalizePitchZone(r.preferredPitchZone)}:${r.preferredPitchNumber}`;
     if (!futureMap.has(key)) futureMap.set(key, []);
     futureMap.get(key).push(r);
@@ -448,17 +458,6 @@ const computeWeekData = (guests, requests, fromDate) => {
 // ─── E-Mail via Resend ────────────────────────────────────────────────────────
 
 const isResendConfigured = () => Boolean(RESEND_API_KEY && RESEND_FROM_EMAIL);
-
-const getGasSenderName = async () => {
-  try {
-    const data = await gasGet('settings', { sheetName: 'Einstellungen' });
-    if (!Array.isArray(data?.rows)) return null;
-    const row = data.rows.find(r => String(r.key || '').trim() === 'senderName');
-    return (row && String(row.value || '').trim()) || null;
-  } catch {
-    return null;
-  }
-};
 
 const sendResendEmail = async ({ to, subject, text }) => {
   if (!isResendConfigured()) throw new Error('E-Mail-Versand ist nicht konfiguriert (RESEND_API_KEY / RESEND_FROM_EMAIL fehlt).');
@@ -593,24 +592,22 @@ app.get('/api/app/bootstrap', requireAuth, async (req, res) => {
     const pitches  = computePitches(guests, requests, today);
     const weekData = computeWeekData(guests, requests, today);
 
-    // Sync als "läuft gleich" markieren, damit der Client sofort pollt
-    if (GAS_ENABLED && GAS_URL && !syncState.syncing) syncState.syncing = true;
+    // GAS-Sync synchron anstoßen – setzt syncState.syncing = true intern (wenn kein Cooldown/laufender Sync)
+    if (GAS_ENABLED && GAS_URL) runBackgroundGasSync();
 
     res.json({
       guests, requests, pitches, weekData,
       weekFrom: today,
+      today,           // Server-seitiges "heute" (Vienna-Timezone) für Client
       settings: fresh.settings,
       gasEnabled: GAS_ENABLED && Boolean(GAS_URL),
       resendConfigured: isResendConfigured(),
       sync: {
-        syncing:  GAS_ENABLED && Boolean(GAS_URL), // immer true wenn GAS aktiv
+        syncing:  syncState.syncing, // korrekter Wert nach runBackgroundGasSync()
         lastSync: fresh.lastGasSync,
         error:    syncState.error,
       },
     });
-
-    // GAS-Sync im Hintergrund anstoßen (nach Response)
-    setImmediate(runBackgroundGasSync);
   } catch (err) {
     console.error('Bootstrap-Fehler:', err);
     res.status(500).json({ error: 'Daten konnten nicht geladen werden.' });
@@ -709,12 +706,13 @@ app.patch('/api/app/guests/:id', requireAuth, (req, res) => {
     const store   = loadStore();
 
     // 1. Sofort im lokalen Cache aktualisieren
-    const gasIdx = (store.gasGuests || []).findIndex(g => g.id === id);
+    const gasIdx   = (store.gasGuests || []).findIndex(g => g.id === id);
+    const localIdx = (store.guests    || []).findIndex(g => g.id === id);
+    if (gasIdx === -1 && localIdx === -1) return res.status(404).json({ error: 'Gast nicht gefunden.' });
     if (gasIdx !== -1) {
       store.gasGuests[gasIdx] = { ...store.gasGuests[gasIdx], ...updates };
     } else {
-      const localIdx = (store.guests || []).findIndex(g => g.id === id);
-      if (localIdx !== -1) store.guests[localIdx] = { ...store.guests[localIdx], ...updates };
+      store.guests[localIdx] = { ...store.guests[localIdx], ...updates };
     }
     writeStore(store);
 
@@ -919,7 +917,8 @@ app.delete('/api/app/requests/:id', requireAuth, async (req, res) => {
       invalidateGasCache('inquiries');
     }
     const store = loadStore();
-    store.requests = (store.requests || []).filter(r => r.id !== id);
+    store.gasRequests = (store.gasRequests || []).filter(r => r.id !== id);
+    store.requests    = (store.requests    || []).filter(r => r.id !== id);
     writeStore(store);
     res.json({ ok: true });
   } catch (err) {
