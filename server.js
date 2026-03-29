@@ -402,16 +402,17 @@ const computePitches = (guests, requests, refDate) => {
     const futureList = futureMap.get(key) || [];
     const nextBooking = futureList[0] || null;
     if (occupiedMap.has(key)) {
+      // Nur als besetzt markieren wenn tatsächlich eingecheckt
       return { ...pitch, status: 'occupied', currentGuest: occupiedMap.get(key), nextBooking };
-    } else if (nextBooking) {
-      return { ...pitch, status: 'reserved', currentGuest: null, nextBooking };
     } else {
-      return { ...pitch, status: 'free', currentGuest: null, nextBooking: null };
+      // Zukünftige Reservierungen = trotzdem frei (nur nextBooking für "Frei bis"-Anzeige)
+      return { ...pitch, status: 'free', currentGuest: null, nextBooking };
     }
   });
 };
 
 const computeWeekData = (guests, requests, fromDate) => {
+  const totalPitches = defaultPitches().length;
   const days = [];
   for (let i = 0; i < 7; i++) {
     const dateStr = addDaysToDateString(fromDate, i);
@@ -431,6 +432,7 @@ const computeWeekData = (guests, requests, fromDate) => {
       dayName,
       dayDate,
       occupied: presentGuests.length,
+      free: Math.max(0, totalPitches - presentGuests.length),
       arriving: arrivingBookings.length,
     });
   }

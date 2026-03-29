@@ -635,11 +635,11 @@ const renderPitchesTab = () => {
     <div class="week-strip">
       ${state.weekData.map(day => `
         <button class="week-day ${day.date === todayStr() ? 'is-today' : ''} ${day.date === state.selectedWeekDay ? 'is-selected' : ''}"
-          data-date="${escHtml(day.date)}" aria-label="${escHtml(day.dayDate)}, ${day.occupied} belegt">
+          data-date="${escHtml(day.date)}" aria-label="${escHtml(day.dayDate)}, ${day.free ?? (day.occupied)} frei">
           <span class="week-day-name">${escHtml(day.dayName)}</span>
           <span class="week-day-date">${escHtml(day.dayDate)}</span>
-          <span class="week-day-count">${day.occupied}</span>
-          <span class="week-day-label">belegt</span>
+          <span class="week-day-count">${day.free ?? day.occupied}</span>
+          <span class="week-day-label">frei</span>
         </button>
       `).join('')}
     </div>
@@ -659,12 +659,10 @@ const renderZoneGroup = (zone) => {
   const isOpen = state.openZones?.has(zone) ?? false;
 
   const free     = pitches.filter(p => p.status === 'free').length;
-  const reserved = pitches.filter(p => p.status === 'reserved').length;
   const occupied = pitches.filter(p => p.status === 'occupied').length;
 
   const countDots = `
     <span class="zone-count ${free === 0 ? 'is-zero' : ''}"><span class="status-dot free"></span>${free} frei</span>
-    <span class="zone-count ${reserved === 0 ? 'is-zero' : ''}"><span class="status-dot reserved"></span>${reserved} res.</span>
     <span class="zone-count ${occupied === 0 ? 'is-zero' : ''}"><span class="status-dot occupied"></span>${occupied} bel.</span>
   `;
 
@@ -683,11 +681,8 @@ const renderZoneGroup = (zone) => {
 };
 
 const renderPitchRow = (pitch) => {
-  const guestName = pitch.currentGuest?.name
-    || (pitch.nextBooking?.name ? `ab ${fmtDate(pitch.nextBooking.arrival)}: ${pitch.nextBooking.name}` : '');
-  const departure = pitch.currentGuest?.departure
-    || pitch.nextBooking?.departure
-    || '';
+  const guestName = pitch.currentGuest?.name || '';
+  const departure = pitch.currentGuest?.departure || '';
 
   return `
     <div class="pitch-row">
