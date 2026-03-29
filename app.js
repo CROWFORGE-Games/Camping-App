@@ -114,8 +114,9 @@ const updateSyncIndicator = () => {
 
 let _syncPollTimer = null;
 
-const pollSyncStatus = () => {
-  if (_syncPollTimer) return; // bereits läuft
+const pollSyncStatus = (force = false) => {
+  if (_syncPollTimer && !force) return; // bereits läuft
+  if (_syncPollTimer) { clearTimeout(_syncPollTimer); _syncPollTimer = null; }
   const check = async () => {
     try {
       const data = await api('/api/app/sync-status');
@@ -201,7 +202,7 @@ const refreshAll = async () => {
   const data = await api('/api/app/bootstrap');
   applyBootstrapData(data, { resetDay: false }); // Tab + Tagauswahl beibehalten
   updateSyncIndicator();
-  if (state.syncing) pollSyncStatus();
+  pollSyncStatus(true); // immer neu starten – Server läuft Sync sowieso
   renderActiveTab();
   updateRequestsBadge();
 };

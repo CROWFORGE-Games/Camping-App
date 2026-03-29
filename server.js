@@ -235,7 +235,14 @@ const gasGet = async (eventType, params = {}) => {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   });
 
-  const res = await fetch(url, { method: 'GET' });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let res;
+  try {
+    res = await fetch(url, { method: 'GET', signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) throw new Error(data.error || `GAS Fehler: ${res.status}`);
 
@@ -275,7 +282,9 @@ const normalizeInquiryStatus = (status) => {
 
 const normalizeInquiryType = (value) => {
   const n = String(value || '').trim().toLowerCase();
-  return n.includes('camp') || n.includes('buch') ? 'booking' : 'contact';
+  // Nur explizit als Kontakt markierte Anfragen → 'contact'; alles andere → 'booking'
+  if (n === 'contact' || n === 'kontakt') return 'contact';
+  return 'booking';
 };
 
 const getGuestsFromGAS = async () => {
@@ -529,25 +538,45 @@ app.post('/api/auth/logout', (_req, res) => res.json({ ok: true }));
 
 // ─── App-Routen ───────────────────────────────────────────────────────────────
 
-app.get('/api/app/bootstrap', requireAuth, (req, res) => {
+app.get('/api/app/bootstrap', requireAuth, async (req, res) => {
   try {
     const store = loadStore();
-    // Sofort aus Cache antworten (keine GAS-Wartezeit)
-    const guests   = [...(store.gasGuests || []), ...(store.guests || [])];
-    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type === 'booking');
+
+    // Beim ersten Start (noch kein Sync-Cache) → einmalig synchron laden
+    if (GAS_ENABLED && GAS_URL && !store.lastGasSync) {
+      await new Promise(resolve => {
+        runBackgroundGasSync();
+        // Kurz warten bis Sync fertig (max. 10 s)
+        const start = Date.now();
+        const wait = setInterval(() => {
+          if (!syncState.syncing || Date.now() - start > 10_000) {
+            clearInterval(wait);
+            storeCache = null; // Store-Cache ungültig machen
+            resolve();
+          }
+        }, 100);
+      });
+    }
+
+    const fresh  = loadStore();
+    const guests   = [...(fresh.gasGuests || []), ...(fresh.guests || [])];
+    const requests = [...(fresh.gasRequests || []), ...(fresh.requests || [])].filter(r => r.type !== 'contact');
     const today    = todayString();
     const pitches  = computePitches(guests, requests, today);
     const weekData = computeWeekData(guests, requests, today);
 
+    // Sync als "läuft gleich" markieren, damit der Client sofort pollt
+    if (GAS_ENABLED && GAS_URL && !syncState.syncing) syncState.syncing = true;
+
     res.json({
       guests, requests, pitches, weekData,
       weekFrom: today,
-      settings: store.settings,
+      settings: fresh.settings,
       gasEnabled: GAS_ENABLED && Boolean(GAS_URL),
       resendConfigured: isResendConfigured(),
       sync: {
-        syncing:  syncState.syncing,
-        lastSync: store.lastGasSync,
+        syncing:  GAS_ENABLED && Boolean(GAS_URL), // immer true wenn GAS aktiv
+        lastSync: fresh.lastGasSync,
         error:    syncState.error,
       },
     });
@@ -570,7 +599,7 @@ app.get('/api/app/pitches', requireAuth, (req, res) => {
     const refDate = normalizeDateOnly(req.query.date) || todayString();
     const store   = loadStore();
     const guests   = [...(store.gasGuests || []), ...(store.guests || [])];
-    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type === 'booking');
+    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type !== 'contact');
     res.json({
       pitches: computePitches(guests, requests, refDate),
       sync: { syncing: syncState.syncing, lastSync: store.lastGasSync },
@@ -585,7 +614,7 @@ app.get('/api/app/week', requireAuth, (req, res) => {
     const fromDate = normalizeDateOnly(req.query.from) || todayString();
     const store    = loadStore();
     const guests   = [...(store.gasGuests || []), ...(store.guests || [])];
-    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type === 'booking');
+    const requests = [...(store.gasRequests || []), ...(store.requests || [])].filter(r => r.type !== 'contact');
     res.json({ weekData: computeWeekData(guests, requests, fromDate), weekFrom: fromDate });
   } catch (err) {
     res.status(500).json({ error: 'Wochendaten konnten nicht geladen werden.' });
