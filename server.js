@@ -153,7 +153,10 @@ const runBackgroundGasSync = () => {
 
           if (senderName)             store.settings.senderName = senderName;
           if (bookingRecipientEmail)  store.settings.bookingRecipientEmail = bookingRecipientEmail;
+          // cc: expliziter GAS-Wert hat Vorrang; sonst bookingRecipientEmail als Standard
           if (cc !== null)            store.settings.cc = cc;
+          else if (bookingRecipientEmail && !store.settings.cc)
+            store.settings.cc = bookingRecipientEmail;
           if (pitchConfigRaw) {
             try {
               const parsed = JSON.parse(pitchConfigRaw);

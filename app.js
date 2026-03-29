@@ -971,6 +971,8 @@ const openSettingsModal = async () => {
   document.getElementById('pw-status').style.display = 'none';
   document.getElementById('pw-form').reset();
   document.getElementById('pw-current').classList.remove('input-error');
+  const pwErr = document.getElementById('pw-current-error');
+  if (pwErr) pwErr.style.display = 'none';
   document.getElementById('settings-overlay').classList.remove('hidden');
 
   // Frische GAS-Werte im Hintergrund nachladen
@@ -1060,19 +1062,26 @@ const bindSettingsEvents = () => {
         }),
       });
       e.target.reset();
+      pwCurrentEl.classList.remove('input-error');
+      const pwErrEl = document.getElementById('pw-current-error');
+      if (pwErrEl) pwErrEl.style.display = 'none';
       statusEl.style.display = 'block';
       statusEl.className = 'form-status success';
       statusEl.textContent = '✓ Passwort erfolgreich geändert';
       showToast('Passwort geändert', 'success');
     } catch (err) {
+      // Aktuelles-Passwort-Feld immer rot markieren (Validierung vorher fängt andere Fehler ab)
+      pwCurrentEl.classList.add('input-error');
+      pwCurrentEl.focus();
+      // Fehlermeldung direkt unter dem Feld anzeigen
+      const pwCurrentError = document.getElementById('pw-current-error');
+      if (pwCurrentError) {
+        pwCurrentError.textContent = err.message;
+        pwCurrentError.style.display = 'block';
+      }
       statusEl.style.display = 'block';
       statusEl.className = 'form-status error';
       statusEl.textContent = err.message;
-      // Falsches aktuelles Passwort → Feld rot markieren
-      if (err.message.toLowerCase().includes('passwort falsch') || err.message.includes('401')) {
-        pwCurrentEl.classList.add('input-error');
-        pwCurrentEl.focus();
-      }
     } finally {
       btn.disabled = false;
     }
