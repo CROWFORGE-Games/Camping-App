@@ -396,12 +396,24 @@ const computePitches = (guests, requests, refDate) => {
     }
   }
 
-  // Build future bookings per pitch (all confirmed with arrival > refDate), sorted by arrival
+  // Confirmed requests covering refDate (arrival <= refDate < departure), not yet checked in → reserved
+  const reservedMap = new Map();
+  for (const r of requests) {
+    if (r.status !== 'confirmed' || !r.preferredPitchZone || !r.preferredPitchNumber) continue;
+    const arrival = normalizeDateOnly(r.arrival);
+    const departure = normalizeDateOnly(r.departure);
+    if (!arrival || !departure) continue;
+    if (arrival > refDate || departure <= refDate) continue;
+    const key = `${normalizePitchZone(r.preferredPitchZone)}:${r.preferredPitchNumber}`;
+    if (!reservedMap.has(key)) reservedMap.set(key, r);
+  }
+
+  // Future bookings per pitch (arrival > refDate) for "Frei bis"-display
   const futureMap = new Map();
   for (const r of requests) {
     if (r.status !== 'confirmed' || !r.preferredPitchZone || !r.preferredPitchNumber) continue;
     const arrival = normalizeDateOnly(r.arrival);
-    if (!arrival || arrival < refDate) continue;
+    if (!arrival || arrival <= refDate) continue;
     const key = `${normalizePitchZone(r.preferredPitchZone)}:${r.preferredPitchNumber}`;
     if (!futureMap.has(key)) futureMap.set(key, []);
     futureMap.get(key).push(r);
@@ -417,9 +429,9 @@ const computePitches = (guests, requests, refDate) => {
     if (occupiedMap.has(key)) {
       // Eingecheckt → Belegt
       return { ...pitch, status: 'occupied', currentGuest: occupiedMap.get(key), nextBooking };
-    } else if (nextBooking && normalizeDateOnly(nextBooking.arrival) === refDate) {
-      // Anreisetag, noch nicht eingecheckt → Reserviert
-      return { ...pitch, status: 'reserved', currentGuest: null, nextBooking };
+    } else if (reservedMap.has(key)) {
+      // Buchungszeitraum läuft, noch nicht eingecheckt → Reserviert
+      return { ...pitch, status: 'reserved', currentGuest: null, nextBooking: reservedMap.get(key) };
     } else {
       // Anreise in der Zukunft oder keine Buchung → Frei (nextBooking für "Frei bis"-Anzeige)
       return { ...pitch, status: 'free', currentGuest: null, nextBooking };
@@ -439,6 +451,23 @@ const computeWeekData = (guests, requests, fromDate) => {
     const presentGuests = guests.filter(g =>
       g.arrival && g.departure && g.arrival <= dateStr && g.departure > dateStr
     );
+
+    // Confirmed requests covering this day (full period), not already reflected by a checked-in guest
+    const occupiedPitchKeys = new Set(presentGuests
+      .filter(g => g.stellplatz && g.stellplatznummer)
+      .map(g => `${normalizePitchZone(g.stellplatz)}:${g.stellplatznummer}`)
+    );
+    const reservedRequests = requests.filter(r => {
+      if (r.status !== 'confirmed' || !r.arrival || !r.departure) return false;
+      if (r.arrival > dateStr || r.departure <= dateStr) return false;
+      // Exclude if pitch already occupied by a checked-in guest
+      if (r.preferredPitchZone && r.preferredPitchNumber) {
+        const key = `${normalizePitchZone(r.preferredPitchZone)}:${r.preferredPitchNumber}`;
+        if (occupiedPitchKeys.has(key)) return false;
+      }
+      return true;
+    });
+
     const arrivingBookings = requests.filter(r =>
       r.status === 'confirmed' && r.arrival === dateStr
     );
@@ -448,7 +477,8 @@ const computeWeekData = (guests, requests, fromDate) => {
       dayName,
       dayDate,
       occupied: presentGuests.length,
-      free: Math.max(0, totalPitches - presentGuests.length),
+      reserved: reservedRequests.length,
+      free: Math.max(0, totalPitches - presentGuests.length - reservedRequests.length),
       arriving: arrivingBookings.length,
     });
   }

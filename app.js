@@ -708,7 +708,7 @@ const renderPitchRow = (pitch) => {
       ${guestName
         ? `<span class="pitch-row-guest">${escHtml(guestName)}</span>${departure ? `<span class="pitch-row-until">bis ${escHtml(fmtDate(departure))}</span>` : ''}`
         : pitch.status === 'reserved'
-          ? `<span class="pitch-row-guest">${escHtml(pitch.nextBooking?.name || 'Reserviert')}</span><span class="pitch-row-until">ab heute</span>`
+          ? `<span class="pitch-row-guest">${escHtml(pitch.nextBooking?.name || 'Reserviert')}</span><span class="pitch-row-until">Reserviert bis ${escHtml(fmtDate(pitch.nextBooking?.departure))}</span>`
           : pitch.nextBooking
             ? `<span class="pitch-row-free">Frei</span><span class="pitch-row-until">frei bis ${escHtml(fmtDate(pitch.nextBooking.arrival))}</span>`
             : `<span class="pitch-row-free">Frei</span>`
