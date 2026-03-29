@@ -236,6 +236,11 @@
         <label for="set-sender-name">Absendername</label>
         <input class="input" type="text" id="set-sender-name" placeholder="Camping Hiasen Hof" />
       </div>
+      <div class="form-group" style="margin-top:0.75rem">
+        <label for="set-cc">CC-E-Mail</label>
+        <input class="input" type="email" id="set-cc" placeholder="kopie@beispiel.at" autocomplete="off" />
+        <p style="font-size:0.7rem;color:var(--text-muted);margin-top:0.25rem">Wird als CC bei allen versendeten E-Mails verwendet. Standard aus Google Sheets (bookingRecipientEmail).</p>
+      </div>
       <button type="submit" class="btn btn-primary btn-full" style="margin-top:1rem">Speichern</button>
       <p id="settings-status" class="form-status" style="display:none;margin-top:0.5rem"></p>
     </form>

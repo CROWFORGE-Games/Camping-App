@@ -115,23 +115,29 @@ const updateSyncIndicator = () => {
 let _syncPollTimer = null;
 
 const pollSyncStatus = (force = false) => {
-  if (_syncPollTimer && !force) return; // bereits läuft
+  if (_syncPollTimer && !force) return;
   if (_syncPollTimer) { clearTimeout(_syncPollTimer); _syncPollTimer = null; }
   const check = async () => {
     try {
       const data = await api('/api/app/sync-status');
-      state.syncing  = Boolean(data.syncing);
-      state.lastSync = data.lastSync || null;
+      state.syncing   = Boolean(data.syncing);
+      state.lastSync  = data.lastSync || null;
       state.syncError = data.error || null;
       updateSyncIndicator();
       if (data.syncing) {
         _syncPollTimer = setTimeout(check, 1500);
       } else {
         _syncPollTimer = null;
-        // Frische Daten im Hintergrund nachladen
+        // Frische Daten nachladen – OHNE erneutes pollSyncStatus zu triggern
         try {
           const fresh = await api('/api/app/bootstrap');
-          applyBootstrapData(fresh, { resetDay: false });
+          // Nur Daten übernehmen, sync-state NICHT überschreiben (verhindert Loop)
+          state.guests   = fresh.guests   || [];
+          state.requests = fresh.requests || [];
+          state.pitches  = fresh.pitches  || [];
+          state.weekData = fresh.weekData || [];
+          state.weekFrom = fresh.weekFrom || todayStr();
+          state.settings = fresh.settings || {};
           renderActiveTab();
           updateRequestsBadge();
         } catch { /* ignorieren */ }
@@ -416,13 +422,12 @@ const renderGuestCard = (guest) => `
 const printMeldezettel = (guestId) => {
   const guest = state.guests.find(g => g.id === guestId);
   if (!guest) return;
-  const w = window.open('', '_blank', 'width=720,height=960');
   const nights = (() => {
     const a = new Date(`${guest.arrival}T00:00:00`);
     const d = new Date(`${guest.departure}T00:00:00`);
     return Math.max(1, Math.round((d - a) / 86400000));
   })();
-  w.document.write(`<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="UTF-8">
 <title>Meldezettel – ${escHtml(guest.name)}</title>
 <style>
@@ -458,9 +463,13 @@ const printMeldezettel = (guestId) => {
   <div class="sig-line">Datum / Stempel</div>
 </div>
 <p class="footer">Ausgestellt am ${new Date().toLocaleDateString('de-AT')} · Hiasen Hof am Thiersee · +43 664 885 305 24</p>
-<script>window.print();window.onafterprint=()=>window.close();<\/script>
-</body></html>`);
-  w.document.close();
+<script>window.addEventListener('load',()=>{setTimeout(()=>window.print(),200);});window.onafterprint=()=>window.close();<\/script>
+</body></html>`;
+  const blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const w    = window.open(url, '_blank');
+  if (!w) showToast('Popup blockiert – bitte Popups für diese Seite erlauben', 'error');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 };
 
 const bindCampingEvents = () => {
@@ -961,9 +970,11 @@ const bindRequestEvents = () => {
 const openSettingsModal = () => {
   const s = state.settings || {};
   document.getElementById('set-sender-name').value = s.senderName || '';
+  document.getElementById('set-cc').value           = s.cc || '';
   document.getElementById('settings-status').style.display = 'none';
   document.getElementById('pw-status').style.display = 'none';
   document.getElementById('pw-form').reset();
+  document.getElementById('pw-current').classList.remove('input-error');
   document.getElementById('settings-overlay').classList.remove('hidden');
 };
 
@@ -995,6 +1006,7 @@ const bindSettingsEvents = () => {
         method: 'PATCH',
         body: JSON.stringify({
           senderName: document.getElementById('set-sender-name').value.trim(),
+          cc:         document.getElementById('set-cc').value.trim(),
         }),
       });
       state.settings = data.settings;
@@ -1027,12 +1039,14 @@ const bindSettingsEvents = () => {
       return;
     }
 
+    const pwCurrentEl = document.getElementById('pw-current');
+    pwCurrentEl.classList.remove('input-error');
     btn.disabled = true;
     try {
       await api('/api/auth/change-password', {
         method: 'POST',
         body: JSON.stringify({
-          currentPassword: document.getElementById('pw-current').value,
+          currentPassword: pwCurrentEl.value,
           newPassword: newPw,
         }),
       });
@@ -1045,6 +1059,11 @@ const bindSettingsEvents = () => {
       statusEl.style.display = 'block';
       statusEl.className = 'form-status error';
       statusEl.textContent = err.message;
+      // Falsches aktuelles Passwort → Feld rot markieren
+      if (err.message.toLowerCase().includes('passwort falsch') || err.message.includes('401')) {
+        pwCurrentEl.classList.add('input-error');
+        pwCurrentEl.focus();
+      }
     } finally {
       btn.disabled = false;
     }

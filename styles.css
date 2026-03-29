@@ -586,6 +586,11 @@ a.btn-icon { text-decoration: none; }
 
 .textarea { resize: vertical; min-height: 90px; }
 
+.input-error, .input-error:focus {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 3px rgba(200, 60, 60, 0.12) !important;
+}
+
 .form-status {
   font-size: 0.78rem;
   padding: 0.5rem 0.75rem;

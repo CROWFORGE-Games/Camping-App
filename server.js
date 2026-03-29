@@ -55,6 +55,7 @@ const defaultStore = () => ({
   lastGasSync: null, // ISO-Timestamp letzter erfolgreicher GAS-Sync
   settings: {
     bookingRecipientEmail: '',
+    cc: '',
     bookingPhone: '+43 664 885 305 24',
     senderName: RESEND_FROM_NAME || 'Hiasen Hof',
   },
@@ -115,13 +116,16 @@ const defaultPitches = () => {
 
 // ─── Hintergrund-GAS-Sync ────────────────────────────────────────────────────
 
-const syncState = { syncing: false, lastSync: null, error: null };
+const syncState = { syncing: false, lastSync: null, error: null, lastAttempt: 0 };
+const MIN_SYNC_INTERVAL_MS = 45_000; // min. 45 s zwischen zwei Syncs
 
 const runBackgroundGasSync = () => {
   if (syncState.syncing) return;
   if (!GAS_ENABLED || !GAS_URL) return;
+  if (Date.now() - syncState.lastAttempt < MIN_SYNC_INTERVAL_MS) return; // Cooldown
   syncState.syncing = true;
   syncState.error = null;
+  syncState.lastAttempt = Date.now();
 
   (async () => {
     try {
@@ -134,18 +138,30 @@ const runBackgroundGasSync = () => {
       if (guestsRaw)   store.gasGuests   = guestsRaw;
       if (requestsRaw) store.gasRequests = requestsRaw;
 
-      // Stellplatz-Konfiguration aus Einstellungen laden
-      // Erwartet: Zeile mit key="pitchConfig", value=JSON-Array der Zonen
+      // Einstellungen + Stellplatz-Konfiguration aus GAS laden
       try {
         const settingsData = await gasGet('settings', { sheetName: 'Einstellungen' });
         if (Array.isArray(settingsData?.rows)) {
-          const cfgRow = settingsData.rows.find(r => String(r.key || '').trim() === 'pitchConfig');
-          if (cfgRow?.value) {
-            const parsed = JSON.parse(String(cfgRow.value));
-            if (Array.isArray(parsed) && parsed.length > 0) store.pitchConfig = parsed;
+          const findVal = (key) => {
+            const row = settingsData.rows.find(r => String(r.key || '').trim() === key);
+            return (row && String(row.value || '').trim()) || null;
+          };
+          const senderName = findVal('senderName');
+          const bookingRecipientEmail = findVal('bookingRecipientEmail');
+          const cc = findVal('cc');
+          const pitchConfigRaw = findVal('pitchConfig');
+
+          if (senderName)             store.settings.senderName = senderName;
+          if (bookingRecipientEmail)  store.settings.bookingRecipientEmail = bookingRecipientEmail;
+          if (cc !== null)            store.settings.cc = cc;
+          if (pitchConfigRaw) {
+            try {
+              const parsed = JSON.parse(pitchConfigRaw);
+              if (Array.isArray(parsed) && parsed.length > 0) store.pitchConfig = parsed;
+            } catch { /* ungültiges JSON */ }
           }
         }
-      } catch { /* pitchConfig optional */ }
+      } catch { /* GAS-Einstellungen optional */ }
 
       store.lastGasSync = new Date().toISOString();
       writeStore(store);
@@ -440,7 +456,16 @@ const sendResendEmail = async ({ to, subject, text }) => {
   if (!isResendConfigured()) throw new Error('E-Mail-Versand ist nicht konfiguriert (RESEND_API_KEY / RESEND_FROM_EMAIL fehlt).');
 
   const store = loadStore();
-  const senderName = (await getGasSenderName()) || store.settings.senderName || RESEND_FROM_NAME || 'Hiasen Hof';
+  const senderName = store.settings.senderName || RESEND_FROM_NAME || 'Hiasen Hof';
+  const ccEmail = String(store.settings.cc || '').trim();
+
+  const body = {
+    from: `${senderName} <${RESEND_FROM_EMAIL}>`,
+    to: [String(to || '').trim()],
+    subject,
+    text,
+  };
+  if (ccEmail) body.cc = [ccEmail];
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -448,12 +473,7 @@ const sendResendEmail = async ({ to, subject, text }) => {
       Authorization: `Bearer ${RESEND_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      from: `${senderName} <${RESEND_FROM_EMAIL}>`,
-      to: [String(to || '').trim()],
-      subject,
-      text,
-    }),
+    body: JSON.stringify(body),
   });
 
   const result = await res.json().catch(() => ({}));
@@ -821,17 +841,42 @@ app.post('/api/app/requests/:id/reply', requireAuth, async (req, res) => {
   }
 });
 
-// Einstellungen speichern
+// Einstellungen speichern + zu GAS syncen
 app.patch('/api/app/settings', requireAuth, async (req, res) => {
   try {
-    const { senderName, bookingRecipientEmail, bookingPhone } = req.body || {};
+    const { senderName, bookingRecipientEmail, bookingPhone, cc } = req.body || {};
     const store = loadStore();
-    if (senderName !== undefined) store.settings.senderName = String(senderName).trim();
-    if (bookingRecipientEmail !== undefined) store.settings.bookingRecipientEmail = String(bookingRecipientEmail).trim();
+    const gasUpdates = []; // { key, value } für GAS-Sync
+    if (senderName !== undefined) {
+      store.settings.senderName = String(senderName).trim();
+      gasUpdates.push({ key: 'senderName', value: store.settings.senderName });
+    }
+    if (bookingRecipientEmail !== undefined) {
+      store.settings.bookingRecipientEmail = String(bookingRecipientEmail).trim();
+      gasUpdates.push({ key: 'bookingRecipientEmail', value: store.settings.bookingRecipientEmail });
+    }
+    if (cc !== undefined) {
+      store.settings.cc = String(cc).trim();
+      gasUpdates.push({ key: 'cc', value: store.settings.cc });
+    }
     if (bookingPhone !== undefined) store.settings.bookingPhone = String(bookingPhone).trim();
     writeStore(store);
     storeCache = null;
     res.json({ ok: true, settings: store.settings });
+
+    // Geänderte Werte im Hintergrund zu GAS syncen
+    if (GAS_ENABLED && GAS_URL && gasUpdates.length > 0) {
+      setImmediate(async () => {
+        for (const { key, value } of gasUpdates) {
+          try {
+            await gasPost('updateSetting', { sheetName: 'Einstellungen', key, value });
+            invalidateGasCache('settings');
+          } catch (err) {
+            console.error(`GAS-Setting-Update (${key}) fehlgeschlagen:`, err.message);
+          }
+        }
+      });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message || 'Fehler beim Speichern.' });
   }
